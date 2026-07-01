@@ -1,0 +1,83 @@
+"slug","name","game_id","price_gbp","prize_pool","overall_odds_1_in","category","launch_date","end_date","is_hidden","prohibited"
+"monopoly-gold","Monopoly Gold","53074751064",2.5,1e+05,2.28,"Casual Play","2025-02-10T23:00:00.000Z","2027-12-16T23:00:00.000Z",FALSE,TRUE
+"bank-the-cash","Bank The Cash","53074751034",5,1e+06,2.34,"Scratch & Reveal","2023-12-15T00:00:00.000Z","2029-12-05T00:00:00.000Z",FALSE,FALSE
+"trolley-load-of-cash","Trolley Load of Cash","53074751052",3,10000,2.34,"Scratch & Reveal","2024-08-06T00:00:00.000Z","2031-03-17T00:00:00.000Z",FALSE,FALSE
+"millionaire-7s-gold","Millionaire 7s Gold","53074751113",5,1e+06,2.35,"Scratch & Reveal","2025-09-16T00:00:00.000Z","2028-12-31T00:00:00.000Z",FALSE,FALSE
+"monopoly-property-payout","Monopoly Property Payout","53074751127",5,5e+05,2.39,"Casual Play","2026-02-09T23:00:00.000Z","2030-11-30T23:00:00.000Z",FALSE,TRUE
+"25m-cash-boost-gold","£25 Million Cash Boost Gold","53074751046",5,1e+06,2.43,"Scratch & Reveal","2024-08-06T00:00:00.000Z","2031-03-17T00:00:00.000Z",FALSE,FALSE
+"rolling-in-riches-pink","Rolling In Riches Pink","53074751047",3,250000,2.44,"Casual Play","2025-01-27T23:00:00.000Z","2028-08-29T23:00:00.000Z",FALSE,FALSE
+"deal-or-no-deal","Deal or No Deal","53074751156",5,1e+05,2.45,"Casual Play","2026-03-30T23:00:00.000Z","2028-02-21T23:00:00.000Z",FALSE,FALSE
+"12-months-richer-emerald","12 Months Richer Emerald","53074751032",5,1200000,2.46,"Scratch & Reveal","2025-04-14T23:00:00.000Z","2028-12-29T23:00:00.000Z",FALSE,FALSE
+"prize-patch","Prize Patch","53074751109",2.5,1e+05,2.48,"Casual Play","2025-07-07T23:00:00.000Z","2031-03-16T23:00:00.000Z",FALSE,FALSE
+"forest-of-fortune","Forest of Fortune","53074751018",3,3e+05,2.49,"Casual Play","2025-01-06T23:00:00.000Z","2031-12-14T23:00:00.000Z",FALSE,FALSE
+"temples-of-treasure","Temples Of Treasure","53074751164",5,5e+05,2.49,"Casual Play","2026-06-15T23:00:00.000Z","2031-03-16T23:00:00.000Z",FALSE,FALSE
+"mega-word-spin","Mega Word Spin","53010181001",5,5e+05,2.5,"Word","2026-06-08T23:00:00.000Z","2030-11-30T23:00:00.000Z",FALSE,FALSE
+"beat-the-chasers","Beat The Chasers","53010191007",5,250000,2.53,"Casual Play","2026-06-29T23:00:00.000Z","2029-12-04T23:00:00.000Z",FALSE,FALSE
+"lucky-expander","Lucky Expander","53074751137",2.5,2e+05,2.54,"Casual Play","2025-11-25T00:00:00.000Z","2028-12-10T00:00:00.000Z",FALSE,FALSE
+"power-puck-shot","Power Puck Shot","53074751081",5,5e+05,2.55,"Casual Play","2023-12-15T00:00:00.000Z","2028-12-13T00:00:00.000Z",FALSE,FALSE
+"loaded-lines","Loaded Lines","53074751147",2.5,1e+05,2.56,"Casual Play","2026-03-10T00:00:00.000Z","2028-12-10T00:00:00.000Z",FALSE,FALSE
+"300k-diamond-bingo","£300K Diamond Bingo","53074751048",3,3e+05,2.57,"Draw & Bingo","2024-08-06T00:00:00.000Z","2031-03-17T00:00:00.000Z",FALSE,FALSE
+"1m-cash-ride","£1 Million Cash Ride","53010191005",5,1e+06,2.58,"Casual Play","2026-05-26T23:00:00.000Z","2029-12-16T23:00:00.000Z",FALSE,FALSE
+"1-million-jackpot-black","£1 Million Jackpot [Black]","53074751141",5,1e+06,2.6,"Scratch & Reveal","2026-01-05T23:00:00.000Z","2031-03-16T23:00:00.000Z",FALSE,FALSE
+"bingo-crazy-gold","Bingo Crazy Gold","53074751060",3,1000,2.6,"Draw & Bingo","2024-08-05T23:00:00.000Z","2031-03-16T23:00:00.000Z",FALSE,FALSE
+"100k-jackpot-gold","£100,000 Jackpot [Gold]","53074751126",1,1e+05,2.61,"Scratch & Reveal","2025-10-21T00:00:00.000Z","2029-12-17T00:00:00.000Z",FALSE,FALSE
+"super-13","Super 13","53074751128",1,200,2.62,"Scratch & Reveal","2025-09-30T00:00:00.000Z","2029-08-08T00:00:00.000Z",FALSE,FALSE
+"super-puck-shot","Super Puck Shot","53074751111",2,75000,2.62,"Casual Play","2025-07-28T23:00:00.000Z","2029-08-07T23:00:00.000Z",FALSE,FALSE
+"symbol-seeker","Symbol Seeker","53010201001",5,1e+06,2.64,"Casual Play","2026-06-02T00:00:00.000Z","2031-03-17T00:00:00.000Z",FALSE,FALSE
+"prize-ball-extravaganza","Prize Ball Extravaganza","53074751117",3,3e+05,2.65,"Casual Play","2025-08-12T00:00:00.000Z","2031-03-17T00:00:00.000Z",FALSE,FALSE
+"merlins-prize-potions","Merlin's Prize Potions","53010201002",3,250000,2.66,"Casual Play","2026-05-11T23:00:00.000Z","2028-12-30T23:00:00.000Z",FALSE,FALSE
+"50m-cash-trail","£50M Cash Trail","53074751150",10,1e+06,2.67,"Casual Play","2026-04-21T23:00:00.000Z","2031-03-16T23:00:00.000Z",FALSE,FALSE
+"sunny-money","Sunny Money","53074751053",2,20000,2.67,"Casual Play","2024-08-06T00:00:00.000Z","2031-03-17T00:00:00.000Z",FALSE,FALSE
+"wild-wild-wins","Wild Wild Wins","53074751135",3,2e+05,2.67,"Casual Play","2026-01-06T00:00:00.000Z","2031-03-17T00:00:00.000Z",FALSE,FALSE
+"mahjong","Mahjong","53074751082",3,150000,2.68,"Casual Play","2025-01-06T23:00:00.000Z","2028-12-30T23:00:00.000Z",FALSE,FALSE
+"cash-bolt-bingo","Cash Bolt Bingo","53074751145",3,3e+05,2.69,"Draw & Bingo","2026-02-24T00:00:00.000Z","2029-09-06T00:00:00.000Z",FALSE,FALSE
+"cash-champions","Cash Champions","53010221002",2,50000,2.69,"Scratch & Reveal","2026-06-22T23:00:00.000Z","2028-08-29T23:00:00.000Z",FALSE,FALSE
+"300k-boomin-lines","£300K Boomin' Lines","53074751097",3,3e+05,2.7,"Casual Play","2025-06-09T23:00:00.000Z","2031-03-16T23:00:00.000Z",FALSE,FALSE
+"diamond-maze-gold","Diamond Maze Gold","53074751049",2.5,1e+05,2.7,"Casual Play","2023-11-13T00:00:00.000Z","2030-12-13T00:00:00.000Z",FALSE,FALSE
+"mega-cashword-purple","Mega Cashword [Purple]","53074751163",3,3e+05,2.7,"Word","2026-04-27T23:00:00.000Z","2028-12-30T23:00:00.000Z",FALSE,FALSE
+"1m-cash-blast","£1 Million Cash Blast","53010211002",5,1e+06,2.71,"Casual Play","2026-04-27T23:00:00.000Z","2029-12-16T23:00:00.000Z",FALSE,FALSE
+"big-top-adventure","Big Top Adventure","53074751160",2.5,150000,2.71,"Casual Play","2026-03-23T23:00:00.000Z","2031-03-16T23:00:00.000Z",FALSE,FALSE
+"cash-numbers","Cash Numbers","53074751149",3,3e+05,2.71,"Casual Play","2026-03-24T00:00:00.000Z","2031-03-17T00:00:00.000Z",FALSE,FALSE
+"deep-sea-adventure","Deep Sea Adventure","53074751166",2.5,150000,2.71,"Casual Play","2026-06-30T00:00:00.000Z","2028-02-22T00:00:00.000Z",FALSE,FALSE
+"treasure-chest-adventure","Treasure Chest Adventure","53074751142",2.5,150000,2.71,"Casual Play","2026-01-05T23:00:00.000Z","2031-03-16T23:00:00.000Z",FALSE,FALSE
+"cashword-millionaire-vip","Cashword Millionaire VIP","53074751139",5,1e+06,2.73,"Word","2026-01-13T00:00:00.000Z","2031-03-17T00:00:00.000Z",FALSE,FALSE
+"10k-bingo","£10,000 Bingo","53074751132",1,10000,2.74,"Draw & Bingo","2023-01-08T00:00:00.000Z","2029-12-17T00:00:00.000Z",FALSE,FALSE
+"black-pearl","Black Pearl","53074751044",5,1e+06,2.74,"Scratch & Reveal","2024-08-05T23:00:00.000Z","2031-03-16T23:00:00.000Z",FALSE,FALSE
+"cash-bolt-power-spins","Cash Bolt Power Spins","53074751155",5,1e+06,2.75,"Casual Play","2026-03-09T23:00:00.000Z","2027-09-22T23:00:00.000Z",FALSE,FALSE
+"instant-scratch-deluxe","Instant Scratch Deluxe","53074751055",1,25000,2.75,"Scratch & Reveal","2024-08-06T00:00:00.000Z","2031-03-17T00:00:00.000Z",FALSE,FALSE
+"prize-bingo-millionaire","Prize Bingo Millionaire","53074751074",5,1e+06,2.75,"Draw & Bingo","2024-08-06T00:00:00.000Z","2031-03-17T00:00:00.000Z",FALSE,FALSE
+"25k-a-month-for-a-year-orange","£25,000 A Month For A Year Orange","53074751039",2,3e+05,2.76,"Scratch & Reveal","2023-11-12T00:00:00.000Z","2028-08-30T00:00:00.000Z",FALSE,FALSE
+"50k-cashword-extra","£50K Cashword Extra","53074751102",2,50000,2.76,"Word","2025-05-12T23:00:00.000Z","2031-03-16T23:00:00.000Z",FALSE,FALSE
+"flip-to-win","Flip To Win","53010191001",1,500,2.76,"Casual Play","2026-05-04T23:00:00.000Z","2030-12-12T23:00:00.000Z",FALSE,FALSE
+"take-the-bait","Take The Bait","53074751073",3,150000,2.76,"Casual Play","2024-08-06T00:00:00.000Z","2031-03-17T00:00:00.000Z",FALSE,FALSE
+"cash-7s-expander","Cash 7s Expander","53074751153",5,1e+06,2.77,"Casual Play","2026-03-03T00:00:00.000Z","2031-03-17T00:00:00.000Z",FALSE,FALSE
+"hot-air-balloon-bingo","Hot-Air Balloon Bingo","53074751162",2,25000,2.77,"Draw & Bingo","2026-05-11T23:00:00.000Z","2031-12-14T23:00:00.000Z",FALSE,FALSE
+"1m-cash-bolt-expander","£1 Million Cash Bolt Expander","53074751095",5,1e+06,2.79,"Casual Play","2025-07-07T23:00:00.000Z","2029-12-16T23:00:00.000Z",FALSE,FALSE
+"big-beat-bonanza","Big Beat Bonanza","53074751061",2.5,1e+05,2.79,"Casual Play","2024-08-06T00:00:00.000Z","2031-03-17T00:00:00.000Z",FALSE,FALSE
+"250k-jackpot-pink","£250,000 Jackpot Pink","53010191003",2,250000,2.8,"Scratch & Reveal","2026-03-30T23:00:00.000Z","2028-04-11T23:00:00.000Z",FALSE,FALSE
+"cash-brix","Cash Brix","53074751077",2.5,1e+05,2.8,"Casual Play","2024-05-13T00:00:00.000Z","2028-08-30T00:00:00.000Z",FALSE,FALSE
+"cash-stacks","Cash Stacks","53074751140",2,1e+05,2.8,"Casual Play","2026-01-13T00:00:00.000Z","2031-03-17T00:00:00.000Z",FALSE,FALSE
+"merge-meter","Merge Meter","53074751084",2,50000,2.8,"Casual Play","2025-01-07T00:00:00.000Z","2028-12-31T00:00:00.000Z",FALSE,FALSE
+"3-in-a-row","3 In A Row","53074751116",0.25,50,2.81,"Scratch & Reveal","2025-08-11T23:00:00.000Z","2031-03-16T23:00:00.000Z",FALSE,FALSE
+"100x","100X","53074751094",5,1e+06,2.83,"Scratch & Reveal","2025-06-23T23:00:00.000Z","2028-12-29T23:00:00.000Z",FALSE,FALSE
+"cash-burst","Cash Burst","53074751106",1,100,2.84,"Scratch & Reveal","2025-05-12T00:00:00.000Z","2028-08-30T00:00:00.000Z",FALSE,FALSE
+"cash-reactors","Cash Reactors","53074751051",1,10000,2.85,"Casual Play","2024-08-06T00:00:00.000Z","2031-03-17T00:00:00.000Z",FALSE,FALSE
+"castle-collect","Castle Collect","53074751101",2.5,1e+05,2.85,"Casual Play","2025-05-28T00:00:00.000Z","2031-03-17T00:00:00.000Z",FALSE,FALSE
+"pennies-and-pounds","Pennies & Pounds","53074751107",0.5,20,2.85,"Scratch & Reveal","2025-05-12T23:00:00.000Z","2028-12-12T23:00:00.000Z",FALSE,FALSE
+"prize-ball","Prize Ball","53074751002",0.25,500,2.85,"Casual Play","2025-01-27T23:00:00.000Z","2031-03-16T23:00:00.000Z",FALSE,FALSE
+"lots-of-luck","Lots Of Luck","53074751108",0.5,500,2.88,"Scratch & Reveal","2025-07-07T23:00:00.000Z","2028-12-09T23:00:00.000Z",FALSE,FALSE
+"winning-7s-pink","Winning 7s Pink","53074751105",1,5000,2.88,"Scratch & Reveal","2025-04-28T23:00:00.000Z","2031-03-16T23:00:00.000Z",FALSE,FALSE
+"word-spin","Word Spin","53074751031",1,10000,2.88,"Word","2023-08-29T00:00:00.000Z","2030-12-01T00:00:00.000Z",FALSE,FALSE
+"coffee-break","Coffee Break","53074751050",2,50000,2.89,"Scratch & Reveal","2024-08-05T00:00:00.000Z","2031-03-16T00:00:00.000Z",FALSE,FALSE
+"cosmic-prize-ball","Cosmic Prize Ball","53074751167",2,50000,2.89,"Casual Play","2026-05-26T23:00:00.000Z","2028-02-21T23:00:00.000Z",FALSE,FALSE
+"hot-chilli-cash-twist","Hot Chilli Cash Twist","53074751146",2,5000,2.89,"Casual Play","2026-02-24T00:00:00.000Z","2031-12-15T00:00:00.000Z",FALSE,FALSE
+"power-prize-boost","Power Prize Boost","53074751158",1,500,2.9,"Casual Play","2026-03-10T00:00:00.000Z","2028-12-13T00:00:00.000Z",FALSE,FALSE
+"super-grid-surge","Super Grid Surge","53074751143",1,500,2.9,"Casual Play","2026-01-05T23:00:00.000Z","2029-08-07T23:00:00.000Z",FALSE,FALSE
+"lotto-hi-lo","Lotto Hi-Lo","53010181002",0.5,100,2.91,"Draw & Bingo","2026-06-29T23:00:00.000Z","2028-12-09T23:00:00.000Z",FALSE,FALSE
+"lucky-lines-gems","Lucky Lines Gems","53074751009",2,50000,2.93,"Casual Play","2021-01-25T00:00:00.000Z","2030-12-20T00:00:00.000Z",FALSE,FALSE
+"5m-cash-spectacular","£5M Cash Spectacular","53074751114",1,1e+05,2.95,"Scratch & Reveal","2025-09-15T23:00:00.000Z","2031-03-16T23:00:00.000Z",FALSE,FALSE
+"emerald-bingo","Emerald Bingo","53074751157",1,10000,2.97,"Draw & Bingo","2026-03-23T23:00:00.000Z","2030-12-12T23:00:00.000Z",FALSE,FALSE
+"monopoly-winning-lines","Monopoly Winning Lines","53074751104",1,10000,2.97,"Casual Play","2025-06-23T23:00:00.000Z","2028-12-12T23:00:00.000Z",FALSE,TRUE
+"donkey-doubler","Donkey Doubler","53010201004",1,10000,2.98,"Casual Play","2026-06-08T23:00:00.000Z","2030-12-12T23:00:00.000Z",FALSE,FALSE
+"lucky-cashword","Lucky Cashword","53074751103",1,10000,2.98,"Word","2025-04-14T23:00:00.000Z","2028-12-09T23:00:00.000Z",FALSE,FALSE
+"lucky-stars","Lucky Stars","53074751036",0.5,3000,3.04,"Scratch & Reveal","2023-12-15T00:00:00.000Z","2028-12-31T00:00:00.000Z",FALSE,FALSE

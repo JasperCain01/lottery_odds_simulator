@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Rscript -e 'cat\\(R.version.string, \"\\\\n\"\\)')",
+      "Bash(Rscript -e 'cat\\(R.version.string\\)')",
+      "Bash(git add *)",
+      "Bash(git commit -q -m 'Initial commit: scrapers, scraped odds data, and implementation plan *)",
+      "Bash(git checkout *)"
+    ]
+  }
+}
