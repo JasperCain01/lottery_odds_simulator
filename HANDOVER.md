@@ -48,7 +48,11 @@ The container is ephemeral; a reclaimed container has **no R installed**.
 | 8 Compare mode | ✅ | c50c0c1 | CRN head-to-head, overlays, export |
 | 9 Performance & caching | ✅ | 72a9281 | faster engine, tuned chunk, result cache |
 | 10 Testing & validation | ✅ | (this commit) | reconciliation + property sweep (123 games) + edge cases |
-| **11 Polish/docs/deploy** | 🔄 **next** | — | + accumulated polish items below |
+| 11 Polish/docs/deploy | ✅ | (this commit) | README rewrite, `deploy.R`, chart text-wrap, `£` escapes, alt-text audit — see brief below |
+
+**Build complete.** All 11 phases of `IMPLEMENTATION_PLAN.md` are done; Phase
+12 (path-dependent / reinvestment modes) remains explicitly deferred/future
+work, not part of this build.
 
 ## Phase 10 — brief (re-dispatch verbatim if lost)
 Formalise testing (property tests + reconciliation) beyond the per-phase
@@ -77,21 +81,40 @@ Verify: `shiny::shinyAppFile("app.R")` constructs; FULL suite green
 Report: what was reconciled + the max diff observed; how many games the
 property sweep covers + the tightest margin; the final `test_dir` line.
 
-## Phase 11 — outline + accumulated polish items (deferred, non-blocking)
-- README usage/deploy docs; alt text already on figures; deployment
-  (shinyapps.io / Posit Connect); optional `renv` + `brand.yml`.
-- **Polish items found during review:** chart title/subtitle/caption truncation
-  at fixed render widths (dream-vs-reality caption, compare subtitle) — wrap with
-  `stringr::str_wrap`; remaining literal-`£` axis labels in `R/viz.R` are
-  cosmetic (fine under any UTF-8 deploy locale) but could be `£` for
-  consistency.
-- **Data-quality note (from Phase 10 reconciliation):** 6 instant-win games
+## Phase 11 — outline + accumulated polish items (done)
+- ✅ README usage/deploy docs — full rewrite: educational story, architecture
+  table (one line per `R/*.R` layer + `app.R`), install/data-cache/run/test
+  commands, feature tour, data-quality note, dependency-management rationale,
+  deployment section.
+- ✅ Alt text already on figures (Phase 6) — re-audited: all 8 `renderPlot()`
+  calls in `app.R` (fan/dist/dream/pbp/leaderboard/compare_dist/compare_fan/
+  compare_crossover) pass `alt = function() ...` wired to the matching
+  `viz_*_alt()`. No gaps found; no change needed.
+- ✅ Deployment (shinyapps.io / Posit Connect) — documented in README +
+  `deploy.R` (commented-out `rsconnect::deployApp()` call with the explicit
+  file manifest incl. `data/*.rds`). No actual deploy attempted (no
+  credentials).
+- ✅ `renv` / `brand.yml` — deliberately **not** added; documented the
+  reasoning in README's "Dependency management" section instead
+  (`install.R`'s flat-vector approach stays simpler for a short, stable
+  dependency list on a single-app project — revisit if that changes).
+- ✅ **Chart text truncation** (dream-vs-reality caption, compare-distribution
+  subtitle) — added `.viz_wrap()` in `R/viz.R` (base `strwrap()`, not
+  `stringr` — not an existing dependency and base R suffices) and applied it
+  to both. Re-rendered both charts to PNG under `LANG=C.UTF-8`: wraps to 2-3
+  lines, fits within render width, no warnings.
+- ✅ **`£` escape consistency** — replaced 21 literal `£` occurrences in
+  EXECUTABLE strings in `R/viz.R` (axis labels, `sprintf()` templates, marker/
+  caption text) with the `£` escape, matching `narrative.R`/`compare.R`.
+  Literal `£` left as-is in comments (9 occurrences). Full suite reconfirmed
+  green after the change (no test matched the old literal text).
+- ✅ **Data-quality note** (from Phase 10 reconciliation): 6 instant-win games
   (`3-in-a-row, lots-of-luck, lotto-hi-lo, lucky-stars, pennies-and-pounds,
   prize-ball`) carry prize tiers labelled as small cash but scraped with
   `gross_prize == 0`, so they fold into the losing row (net_value = −price).
   `data_prep` is correct (verified); this is an upstream scrape artifact.
-  Consider surfacing it in the README / a data-quality note in the app.
-  Pinned by `tests/testthat/test-reconciliation.R`.
+  Documented in README's "Data quality note" section. Pinned by
+  `tests/testthat/test-reconciliation.R`.
 
 ## Resume protocol
 1. Read this file + `git log --oneline`. The last ✅ commit is the last

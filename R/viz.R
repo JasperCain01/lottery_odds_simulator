@@ -38,6 +38,21 @@
 
 
 # ------------------------------------------------------------------------------
+# .viz_wrap(x, width)
+# ------------------------------------------------------------------------------
+# Internal: wrap a long caption/subtitle string onto multiple lines so it fits
+# within a fixed render width instead of running off the edge of the plot
+# device. WHY base `strwrap()` and not `stringr::str_wrap()`: stringr is not
+# already a project dependency (see install.R) and base R's strwrap() does the
+# same word-wrapping job, so there is no need to add one just for this.
+# Returns a single string with embedded "\n"s (what ggplot2's text grobs
+# expect), not a character vector of lines.
+.viz_wrap <- function(x, width = 80) {
+  paste(strwrap(x, width = width), collapse = "\n")
+}
+
+
+# ------------------------------------------------------------------------------
 # .viz_band_colors(n)
 # ------------------------------------------------------------------------------
 # Internal: n shades from light to dark blue for nested fan-chart ribbons
@@ -157,11 +172,11 @@ viz_transform_axis_label <- function(mode = c("none", "winsorize", "signed_log")
                                      winsorize_probs = c(0.01, 0.99)) {
   mode <- match.arg(mode)
   switch(mode,
-    none = "Session P&L (£)",
+    none = "Session P&L (\u00a3)",
     winsorize = sprintf(
-      "Session P&L (£, winsorized to %.0f-%.0fth pct -- tails clipped, not to true scale)",
+      "Session P&L (\u00a3, winsorized to %.0f-%.0fth pct -- tails clipped, not to true scale)",
       100 * winsorize_probs[1], 100 * winsorize_probs[2]),
-    signed_log = "Session P&L (signed log scale -- equal spacing != equal £)"
+    signed_log = "Session P&L (signed log scale -- equal spacing != equal \u00a3)"
   )
 }
 
@@ -298,7 +313,7 @@ viz_fan_chart <- function(sim, show_mean = TRUE, title = NULL) {
 
   p +
     ggplot2::scale_x_continuous(labels = scales::label_comma()) +
-    ggplot2::scale_y_continuous(labels = scales::label_dollar(prefix = "£")) +
+    ggplot2::scale_y_continuous(labels = scales::label_dollar(prefix = "\u00a3")) +
     ggplot2::labs(
       x = "Play #", y = "Cumulative session P&L",
       title = .viz_default(title, "Cumulative P&L over the session (fan chart)"),
@@ -325,8 +340,8 @@ viz_fan_chart_alt <- function(sim) {
   sprintf(paste0(
     "Fan chart of cumulative session profit and loss over %s plays, across %s ",
     "simulated sessions. The band widens from the first play to the last; by ",
-    "play %s the %s%% of outcomes fall between £%s and £%s, the mean path ends ",
-    "at £%s, and the break-even line is at £0."),
+    "play %s the %s%% of outcomes fall between \u00a3%s and \u00a3%s, the mean path ends ",
+    "at \u00a3%s, and the break-even line is at \u00a30."),
     format(sim$N, big.mark = ","), format(sim$R, big.mark = ","),
     format(tail(sim$checkpoint_plays, 1), big.mark = ","),
     format(100 * (probs[hi_j] - probs[lo_j]), trim = TRUE),
@@ -462,7 +477,7 @@ viz_pnl_hist_alt <- function(sim) {
   totals <- as.numeric(sim$totals)
   sprintf(paste0(
     "Histogram of final session profit and loss across %s simulated sessions ",
-    "of %s plays each. Mean £%s, median £%s, break-even (£0) marked; %.1f%% of ",
+    "of %s plays each. Mean \u00a3%s, median \u00a3%s, break-even (\u00a30) marked; %.1f%% of ",
     "sessions ended in profit."),
     format(sim$R, big.mark = ","), format(sim$N, big.mark = ","),
     format(round(mean(totals), 2), big.mark = ","),
@@ -505,12 +520,12 @@ viz_dream_vs_reality <- function(metrics, title = NULL) {
 
   cap <- if (is.na(d$conditional$mean_session)) {
     sprintf(paste0(
-      "The top prize (£%s) makes up essentially all of the probability mass ",
+      "The top prize (\u00a3%s) makes up essentially all of the probability mass ",
       "here -- there is no meaningful 'no jackpot' scenario to show."),
       format(d$top_value, big.mark = ",", scientific = FALSE))
   } else {
     sprintf(paste0(
-      "Top prize £%s hits with probability %s%% per play (~%s%% chance of at ",
+      "Top prize \u00a3%s hits with probability %s%% per play (~%s%% chance of at ",
       "least one hit across N = %s plays). The 'Reality' bar is what a session ",
       "looks like on every play that does NOT hit it -- almost every session."),
       format(d$top_value, big.mark = ",", scientific = FALSE),
@@ -518,17 +533,20 @@ viz_dream_vs_reality <- function(metrics, title = NULL) {
       format(signif(100 * d$p_top_in_N, 3), trim = TRUE),
       format(d$N, big.mark = ","))
   }
+  # Wrapped so the caption fits within a fixed render width instead of
+  # overflowing the plot device on one long line (see .viz_wrap()).
+  cap <- .viz_wrap(cap, width = 80)
 
   ggplot2::ggplot(df, ggplot2::aes(x = scenario, y = mean_session, fill = scenario)) +
     ggplot2::geom_col(width = 0.55) +
     ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "grey40") +
     ggplot2::geom_text(
-      ggplot2::aes(label = scales::label_dollar(prefix = "£")(mean_session),
+      ggplot2::aes(label = scales::label_dollar(prefix = "\u00a3")(mean_session),
                   vjust = ifelse(mean_session >= 0, -0.4, 1.3)),
       fontface = "bold", size = 4.2
     ) +
     ggplot2::scale_fill_manual(values = c("#7B8FA6", "#B0413E"), guide = "none") +
-    ggplot2::scale_y_continuous(labels = scales::label_dollar(prefix = "£")) +
+    ggplot2::scale_y_continuous(labels = scales::label_dollar(prefix = "\u00a3")) +
     ggplot2::labs(
       x = NULL, y = sprintf("Mean session P&L (N = %s plays)", format(d$N, big.mark = ",")),
       title = .viz_default(title, "The advertised dream vs. what almost always happens"),
@@ -546,8 +564,8 @@ viz_dream_vs_reality_alt <- function(metrics) {
   d <- metrics$dream
   sprintf(paste0(
     "Bar chart contrasting mean session profit and loss across the full ",
-    "distribution (£%s, includes the jackpot chance) against the distribution ",
-    "conditional on not hitting the top prize of £%s (£%s) -- the outcome in ",
+    "distribution (\u00a3%s, includes the jackpot chance) against the distribution ",
+    "conditional on not hitting the top prize of \u00a3%s (\u00a3%s) -- the outcome in ",
     "practically every session, since the top prize hits with probability ",
     "%s%% across %s plays."),
     format(round(d$full$mean_session, 2), big.mark = ","),
@@ -596,7 +614,7 @@ viz_leaderboard_vs_n <- function(series_df,
   ylab <- if (single_metric) {
     switch(metric_label,
       p_profit = "P(profit)",
-      mean_pnl = "Mean session P&L (£)",
+      mean_pnl = "Mean session P&L (\u00a3)",
       as.character(metric_label))
   } else "Value"
 
@@ -617,7 +635,7 @@ viz_leaderboard_vs_n <- function(series_df,
   } else if (single_metric && identical(metric_label, "mean_pnl")) {
     p <- p +
       ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "grey40") +
-      ggplot2::scale_y_continuous(labels = scales::label_dollar(prefix = "£"))
+      ggplot2::scale_y_continuous(labels = scales::label_dollar(prefix = "\u00a3"))
   }
 
   p
@@ -742,7 +760,7 @@ viz_play_by_play_alt <- function(one_session, price = NULL) {
 
   sprintf(paste0(
     "Line chart of cumulative profit and loss over a single %s-play session. ",
-    "%d of %d plays won; the session ends at £%s, %s break-even."),
+    "%d of %d plays won; the session ends at \u00a3%s, %s break-even."),
     format(n, big.mark = ","), sum(is_win), n,
     format(round(tail(cum, 1), 2), big.mark = ","),
     if (tail(cum, 1) >= 0) "at or above" else "below"
@@ -806,6 +824,14 @@ viz_compare_dist <- function(compare_result,
   n_strat <- length(levels(df$strategy))
   pal     <- .compare_palette(n_strat)
 
+  # Wrapped so the subtitle fits within a fixed render width instead of
+  # overflowing the plot device on one long line (see .viz_wrap()).
+  subtitle <- .viz_wrap(sprintf(
+    "N = %s, R = %s, seed = %s -- Common Random Numbers: differences are real, not noise",
+    format(compare_result$N, big.mark = ","),
+    format(compare_result$R, big.mark = ","),
+    format(compare_result$seed)), width = 80)
+
   ggplot2::ggplot(df, ggplot2::aes(x = x, color = strategy, fill = strategy)) +
     ggplot2::geom_density(alpha = 0.12, linewidth = 0.9) +
     ggplot2::geom_vline(xintercept = be, linetype = "dashed", color = "grey40") +
@@ -814,10 +840,7 @@ viz_compare_dist <- function(compare_result,
     ggplot2::labs(
       x = viz_transform_axis_label(transform, winsorize_probs), y = "Density",
       title = .viz_default(title, "Final session P&L -- strategies compared (shared random draws)"),
-      subtitle = sprintf("N = %s, R = %s, seed = %s -- Common Random Numbers: differences are real, not noise",
-                         format(compare_result$N, big.mark = ","),
-                         format(compare_result$R, big.mark = ","),
-                         format(compare_result$seed))
+      subtitle = subtitle
     ) +
     ggplot2::theme_minimal(base_size = 13)
 }
@@ -829,14 +852,14 @@ viz_compare_dist <- function(compare_result,
 # Alt text off the RAW (untransformed) totals -- honest £ figures per strategy.
 viz_compare_dist_alt <- function(compare_result) {
   tb <- compare_result$table
-  parts <- sprintf("'%s' (mean £%s, %.1f%% in profit)",
+  parts <- sprintf("'%s' (mean \u00a3%s, %.1f%% in profit)",
                    tb$strategy,
                    format(round(tb$mean_pnl, 2), big.mark = ","),
                    100 * tb$p_profit)
   sprintf(paste0(
     "Overlaid density plot of final session profit and loss for %d strategies ",
     "evaluated on the same random draws (Common Random Numbers), across %s ",
-    "sessions of %s plays: %s. The break-even line is at £0."),
+    "sessions of %s plays: %s. The break-even line is at \u00a30."),
     nrow(tb), format(compare_result$R, big.mark = ","),
     format(compare_result$N, big.mark = ","),
     paste(parts, collapse = "; ")
@@ -875,7 +898,7 @@ viz_compare_fan <- function(compare_result, title = NULL) {
     ggplot2::geom_line(linewidth = 1) +
     ggplot2::scale_color_manual(values = pal, name = "Strategy") +
     ggplot2::scale_x_continuous(labels = scales::label_comma()) +
-    ggplot2::scale_y_continuous(labels = scales::label_dollar(prefix = "£")) +
+    ggplot2::scale_y_continuous(labels = scales::label_dollar(prefix = "\u00a3")) +
     ggplot2::labs(
       x = "Play #", y = "Median cumulative P&L",
       title = .viz_default(title, "Median cumulative P&L over the session -- strategies compared"),
@@ -898,12 +921,12 @@ viz_compare_fan_alt <- function(compare_result) {
     j  <- which.min(abs(p$sim$probs - 0.5))
     cq[nrow(cq), j]
   }, numeric(1))
-  parts <- sprintf("'%s' ends at a median of £%s",
+  parts <- sprintf("'%s' ends at a median of \u00a3%s",
                    compare_result$labels,
                    format(round(finals, 2), big.mark = ","))
   sprintf(paste0(
     "Line chart of the median cumulative profit and loss over %s plays for %d ",
-    "strategies on shared random draws: %s. The break-even line is at £0."),
+    "strategies on shared random draws: %s. The break-even line is at \u00a30."),
     format(compare_result$N, big.mark = ","), length(per),
     paste(parts, collapse = "; ")
   )
