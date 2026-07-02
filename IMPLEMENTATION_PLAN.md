@@ -51,12 +51,19 @@ The deeper educational story the app is built around:
   on `slug` for `price_gbp` (£0.25–£10) and metadata.
 - **Losing outcome** is implicit: `P(lose) = 1 − Σ implied_probability` (~0.65
   scratchcards, ~0.71 instant win).
-- **RTP spread:** scratchcards 53%→65% median; instant win **11.6%→74%**. Low-price
-  instant games are the biggest money-shredders.
-- **Volatility spread:** a few jackpot games have per-play SD in the hundreds/thousands
-  of £ vs a £5 stake — these drive the skew and the interesting small-*N* behaviour.
-- **Data-quality flag:** raw odds push a few jackpot games to RTP >100% (rounded,
-  high-tolerance top-tier odds). Handled via the flag/cap toggle, not silently.
+- **RTP spread (per printing/`game_number`):** scratchcards 53.4%→69.7% (median
+  64.4%); instant win **11.6%→74%**. Low-price instant games are the biggest
+  money-shredders. NB games must be grouped by `game_number`, not `game_name`: a few
+  titles have multiple printings (e.g. "£100,000 A Month For A Year" = 1479/1499/1502)
+  and merging them by name triples EV and fabricates impossible RTPs.
+- **Volatility spread:** a few jackpot games have per-play SD in the **hundreds** of £
+  vs a £5 stake (highest: £2 Million Red ≈ £834) — these drive the skew and the
+  interesting small-*N* behaviour.
+- **Data-quality flag (precautionary):** on the current snapshot **no game exceeds
+  100% RTP** once grouped correctly, so the >100% "hard flag" fires zero times. The
+  flag/cap machinery is retained as an advisory guard for future scrapes and to expose
+  a conservative `rtp_capped` column (drops tiers with `tolerance_pct` ≥ 30%), never
+  altering the raw odds.
 - **Game-universe metadata** (catalogue): `is_hidden`, `prohibited`, `end_date` /
   `closure_date`, `category`. Used for filtering to purchasable games.
 
@@ -316,7 +323,10 @@ Sonnet for UI, plumbing, docs. Escalate effort/model mid-phase on surprise.
 
 ## 8. Risk & edge-case register
 
-- Raw odds → RTP >100% on jackpot games (handled: flag/cap toggle).
+- Grouping games by `game_name` instead of `game_number` merges multi-printing titles
+  and fabricates impossible RTPs (root-caused in Phase 1; handled: group by
+  `game_number`). No game exceeds 100% RTP on the current snapshot; the flag/cap
+  toggle is retained as a precautionary advisory guard, not a fix for observed data.
 - N×R memory blow-up (handled: cap + chunking).
 - Skew breaks Normal CI at small *N* (handled: report empirical percentiles, not
   mean±SD; keep analytical only as reference overlay).
