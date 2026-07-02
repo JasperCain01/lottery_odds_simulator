@@ -44,7 +44,8 @@ library(scales)
 app_root <- getwd()
 
 for (rel in c("R/data_prep.R", "R/simulate.R", "R/metrics.R",
-              "R/strategies.R", "R/app_helpers.R", "R/viz.R", "R/narrative.R")) {
+              "R/strategies.R", "R/app_helpers.R", "R/viz.R", "R/narrative.R",
+              "R/compare.R")) {
   source(file.path(app_root, rel))
 }
 
@@ -86,6 +87,27 @@ LEADERBOARD_PRESETS <- c(
   "Best RTP"        = "best_rtp",
   "Worst RTP"       = "worst_rtp",
   "Biggest jackpot" = "biggest_jackpot"
+)
+
+# ------------------------------------------------------------------------------
+# Compare mode (Phase 8): put strategies head-to-head FAIRLY. The compare
+# pipeline (R/compare.R) drives every selected strategy with Common Random
+# Numbers (the SAME uniform stream, via crn = seed) so observed differences are
+# real, not sampling noise. It reuses the sidebar's N / R / seed / confidence so
+# there is a single, clearly-surfaced seed control, and is gated behind its own
+# "Run comparison" button (independent of the single-run "Run simulation").
+# COMPARE_PRESETS are the config-free presets a user can tick to compare; the
+# currently-configured sidebar strategy (single/custom included) can be added
+# via a checkbox. The crossover small-multiple reuses the bounded leaderboard
+# grid with the SHARED seed.
+# ------------------------------------------------------------------------------
+COMPARE_PRESETS <- c(
+  "Always cheapest"  = "cheapest",
+  "Always priciest"  = "priciest",
+  "Best RTP"         = "best_rtp",
+  "Worst RTP"        = "worst_rtp",
+  "Biggest jackpot"  = "biggest_jackpot",
+  "Random each play" = "random_each_play"
 )
 
 # Human-readable "Game (source, £price)" choices for the game-picker inputs.
@@ -233,6 +255,39 @@ ui <- page_sidebar(
       actionButton("run_leaderboard", "Compute leaderboard", class = "btn-secondary"),
       plotOutput("leaderboard_plot", height = "420px"),
       tableOutput("leaderboard_table")
+    ),
+    nav_panel(
+      "Compare",
+      p(class = "text-muted small mt-2",
+        "Put strategies head-to-head. Every selected strategy is evaluated on ",
+        strong("the same random draws (Common Random Numbers)"),
+        " -- so the differences you see are real, not sampling noise. Uses the ",
+        "sidebar's N / R / seed / confidence; change the seed to see a different ",
+        "(equally fair) common draw. Gated behind its own button, independent of ",
+        "\"Run simulation\"."),
+      checkboxGroupInput("compare_presets", "Strategies to compare",
+                         choices = COMPARE_PRESETS,
+                         selected = c("cheapest", "biggest_jackpot"),
+                         inline = TRUE),
+      checkboxInput("compare_include_current",
+                    "Also include the strategy configured in the sidebar",
+                    value = FALSE),
+      div(class = "d-flex gap-2 flex-wrap mb-2",
+          actionButton("run_compare", "Run comparison", class = "btn-primary"),
+          downloadButton("download_compare_csv", "Table (CSV)", class = "btn-secondary"),
+          downloadButton("download_compare_png", "Distribution (PNG)", class = "btn-secondary")),
+      plotOutput("compare_dist_plot", height = "420px"),
+      plotOutput("compare_fan_plot", height = "420px"),
+      p(class = "text-muted small mt-3",
+        sprintf(paste0(
+          "Low-N vs high-N crossover: P(profit) swept over a fixed N grid (%s) at ",
+          "R = %s sessions/point, all strategies on the SHARED seed. Watch the ",
+          "ranking flip -- at small N a higher-variance, worse-average game can ",
+          "have the better break-even shot; at large N the mean/RTP ordering wins."),
+          paste(format(LEADERBOARD_N_GRID, big.mark = ","), collapse = ", "),
+          format(LEADERBOARD_R, big.mark = ","))),
+      plotOutput("compare_crossover_plot", height = "380px"),
+      tableOutput("compare_table")
     ),
     nav_panel(
       "Risk & engagement",
@@ -477,6 +532,104 @@ server <- function(input, output, session) {
     validate(need(isTRUE(input$run_leaderboard > 0), leaderboard_not_run_msg))
     viz_leaderboard_table(leaderboard_result())
   })
+
+  # ---- Compare mode (Phase 8): CRN-driven head-to-head ----------------------
+  # Gated behind its OWN button, independent of "Run simulation". Builds each
+  # selected strategy over the currently filtered universe, then run_compare()
+  # drives them all on the SAME uniform stream (crn = seed) for a fair compare.
+  compare_not_run_msg <- "Pick at least two strategies and click \"Run comparison\"."
+
+  compare_result <- eventReactive(input$run_compare, {
+    gs <- filtered_gs()
+    validate(need(!is_error(gs), if (is_error(gs)) conditionMessage(gs) else NULL))
+
+    bound_msg <- validate_run_bounds(input$N, input$R, N_MAX, R_MAX, NR_MAX)
+    validate(need(is.null(bound_msg), bound_msg))
+
+    # Build the config-free presets the user ticked.
+    strats <- list()
+    for (p in input$compare_presets) {
+      s <- tryCatch(build_strategy(p, gs, outcomes_full), error = function(e) NULL)
+      if (!is.null(s)) strats[[length(strats) + 1L]] <- s
+    }
+    # Optionally add the sidebar-configured strategy (single/custom supported).
+    if (isTRUE(input$compare_include_current)) {
+      custom_ids <- input$custom_games
+      custom_w   <- if (!is.null(custom_ids) && length(custom_ids) > 0L)
+        collect_custom_weights(input, custom_ids) else NULL
+      cur <- tryCatch(build_strategy(
+        input$strategy_preset, gs, outcomes_full,
+        single_game = input$single_game,
+        custom_games = custom_ids, custom_weights = custom_w),
+        error = function(e) NULL)
+      if (!is.null(cur)) strats[[length(strats) + 1L]] <- cur
+    }
+
+    seed_val <- if (is.null(input$seed) || !is.finite(input$seed)) 1L else as.integer(input$seed)
+
+    res <- tryCatch(
+      run_compare(strats, outcomes_full, N = input$N, R = input$R,
+                  seed = seed_val, conf = input$conf),
+      error = function(e) e)
+    validate(need(!is_error(res), if (is_error(res)) conditionMessage(res) else NULL))
+    res
+  }, ignoreInit = TRUE)
+
+  # Crossover small-multiple: the compared strategies swept over the bounded
+  # leaderboard N grid on the SHARED seed (its own light sweep -- see
+  # run_compare_leaderboard()).
+  compare_crossover <- reactive({
+    res <- compare_result()
+    strats <- lapply(res$per, function(p) p$strategy)
+    run_compare_leaderboard(strats, outcomes_full, N_grid = LEADERBOARD_N_GRID,
+                            metric = "p_profit", R = LEADERBOARD_R, seed = res$seed)
+  })
+
+  output$compare_dist_plot <- renderPlot({
+    validate(need(isTRUE(input$run_compare > 0), compare_not_run_msg))
+    viz_compare_dist(compare_result(), transform = input$pnl_transform)
+  }, alt = function() {
+    if (!isTRUE(input$run_compare > 0)) return(compare_not_run_msg)
+    viz_compare_dist_alt(compare_result())
+  })
+
+  output$compare_fan_plot <- renderPlot({
+    validate(need(isTRUE(input$run_compare > 0), compare_not_run_msg))
+    viz_compare_fan(compare_result())
+  }, alt = function() {
+    if (!isTRUE(input$run_compare > 0)) return(compare_not_run_msg)
+    viz_compare_fan_alt(compare_result())
+  })
+
+  output$compare_crossover_plot <- renderPlot({
+    validate(need(isTRUE(input$run_compare > 0), compare_not_run_msg))
+    viz_leaderboard_vs_n(compare_crossover(),
+                         title = "P(profit) vs N -- the low-N vs high-N crossover")
+  }, alt = function() {
+    if (!isTRUE(input$run_compare > 0)) return(compare_not_run_msg)
+    viz_leaderboard_vs_n_alt(compare_crossover())
+  })
+
+  output$compare_table <- renderTable({
+    validate(need(isTRUE(input$run_compare > 0), compare_not_run_msg))
+    compare_table_display(compare_result())
+  })
+
+  # ---- Export: comparison table as CSV, distribution overlay as PNG ---------
+  output$download_compare_csv <- downloadHandler(
+    filename = function() sprintf("lottery_compare_%s.csv", Sys.Date()),
+    content = function(file) {
+      utils::write.csv(compare_result()$table, file, row.names = FALSE)
+    }
+  )
+  output$download_compare_png <- downloadHandler(
+    filename = function() sprintf("lottery_compare_dist_%s.png", Sys.Date()),
+    content = function(file) {
+      ggplot2::ggsave(file, viz_compare_dist(compare_result(),
+                                             transform = input$pnl_transform),
+                      width = 9, height = 5.5, dpi = 120)
+    }
+  )
 
   output$headline_metrics <- renderPrint({
     validate(need(isTRUE(input$run > 0), not_run_msg))

@@ -748,3 +748,163 @@ viz_play_by_play_alt <- function(one_session, price = NULL) {
     if (tail(cum, 1) >= 0) "at or above" else "below"
   )
 }
+
+
+# ==============================================================================
+# 6. COMPARE MODE (Phase 8) -- multi-strategy overlays
+# ------------------------------------------------------------------------------
+# Builders that draw a run_compare() result (see R/compare.R): several
+# strategies evaluated on Common Random Numbers (the SAME uniform stream), so
+# the differences the charts show are real, not sampling noise. Each is a pure
+# function returning a ggplot, with a matching viz_*_alt() companion, exactly
+# like the single-run builders above. `transform` honours the same log/winsorize
+# machinery (viz_transform_pnl()).
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# .compare_palette(n)
+# ------------------------------------------------------------------------------
+# Internal: a categorical, colour-blind-friendly palette for up to n strategies
+# (Okabe-Ito, which reads in both light and dark and avoids the red/green trap).
+# Cycles if n exceeds the palette length (rare -- compares are a handful).
+.compare_palette <- function(n) {
+  base <- c("#0072B2", "#D55E00", "#009E73", "#CC79A7",
+            "#E69F00", "#56B4E9", "#F0E442", "#000000")
+  if (n <= length(base)) return(base[seq_len(n)])
+  rep(base, length.out = n)
+}
+
+
+# ------------------------------------------------------------------------------
+# viz_compare_dist(compare_result, transform, winsorize_probs, title)
+# ------------------------------------------------------------------------------
+# Overlaid final-P&L densities, one colour per strategy, with the break-even
+# line at £0. `transform` feeds viz_transform_pnl(); for "winsorize" the SAME
+# clip bounds (computed once over the POOLED totals of all strategies) are
+# applied to every series and to the break-even marker, so the strategies stay
+# on one comparable axis rather than each clipped to its own quantiles.
+viz_compare_dist <- function(compare_result,
+                             transform       = c("none", "winsorize", "signed_log"),
+                             winsorize_probs = c(0.01, 0.99),
+                             title           = NULL) {
+  transform <- match.arg(transform)
+  df <- compare_result$totals_long
+  if (is.null(df) || nrow(df) == 0L) stop("compare_result has no totals.", call. = FALSE)
+
+  bounds <- NULL
+  if (identical(transform, "winsorize")) {
+    bounds <- stats::quantile(df$pnl, probs = winsorize_probs, names = FALSE,
+                              type = 7, na.rm = TRUE)
+  }
+  df$x <- viz_transform_pnl(df$pnl, mode = transform,
+                            winsorize_probs = winsorize_probs,
+                            winsorize_bounds = bounds)
+  be <- viz_transform_pnl(0, mode = transform,
+                          winsorize_probs = winsorize_probs,
+                          winsorize_bounds = bounds)[1]
+
+  n_strat <- length(levels(df$strategy))
+  pal     <- .compare_palette(n_strat)
+
+  ggplot2::ggplot(df, ggplot2::aes(x = x, color = strategy, fill = strategy)) +
+    ggplot2::geom_density(alpha = 0.12, linewidth = 0.9) +
+    ggplot2::geom_vline(xintercept = be, linetype = "dashed", color = "grey40") +
+    ggplot2::scale_color_manual(values = pal, name = "Strategy") +
+    ggplot2::scale_fill_manual(values = pal, name = "Strategy") +
+    ggplot2::labs(
+      x = viz_transform_axis_label(transform, winsorize_probs), y = "Density",
+      title = .viz_default(title, "Final session P&L -- strategies compared (shared random draws)"),
+      subtitle = sprintf("N = %s, R = %s, seed = %s -- Common Random Numbers: differences are real, not noise",
+                         format(compare_result$N, big.mark = ","),
+                         format(compare_result$R, big.mark = ","),
+                         format(compare_result$seed))
+    ) +
+    ggplot2::theme_minimal(base_size = 13)
+}
+
+
+# ------------------------------------------------------------------------------
+# viz_compare_dist_alt(compare_result)
+# ------------------------------------------------------------------------------
+# Alt text off the RAW (untransformed) totals -- honest £ figures per strategy.
+viz_compare_dist_alt <- function(compare_result) {
+  tb <- compare_result$table
+  parts <- sprintf("'%s' (mean £%s, %.1f%% in profit)",
+                   tb$strategy,
+                   format(round(tb$mean_pnl, 2), big.mark = ","),
+                   100 * tb$p_profit)
+  sprintf(paste0(
+    "Overlaid density plot of final session profit and loss for %d strategies ",
+    "evaluated on the same random draws (Common Random Numbers), across %s ",
+    "sessions of %s plays: %s. The break-even line is at £0."),
+    nrow(tb), format(compare_result$R, big.mark = ","),
+    format(compare_result$N, big.mark = ","),
+    paste(parts, collapse = "; ")
+  )
+}
+
+
+# ------------------------------------------------------------------------------
+# viz_compare_fan(compare_result, title)
+# ------------------------------------------------------------------------------
+# Overlaid fan-chart MEDIAN lines, one per strategy, from each sim's
+# checkpoint_quantiles / checkpoint_plays, plus the break-even line at £0.
+# Medians (not full ribbons) are the priority for legibility: several
+# overlapping percentile ribbons quickly turn to mush, whereas one median line
+# per strategy makes the "which one pulls ahead / falls behind as the session
+# runs" story read at a glance.
+viz_compare_fan <- function(compare_result, title = NULL) {
+  per <- compare_result$per
+  if (is.null(per) || length(per) == 0L) stop("compare_result has no per-strategy sims.", call. = FALSE)
+
+  med_df <- do.call(rbind, lapply(per, function(p) {
+    sim   <- p$sim
+    probs <- sim$probs
+    cq    <- sim$checkpoint_quantiles
+    # Median column: the prob closest to 0.5 (default probs include it exactly).
+    j <- which.min(abs(probs - 0.5))
+    data.frame(play = sim$checkpoint_plays, median = cq[, j],
+               strategy = p$label, stringsAsFactors = FALSE)
+  }))
+  med_df$strategy <- factor(med_df$strategy, levels = compare_result$labels)
+
+  pal <- .compare_palette(length(compare_result$labels))
+
+  ggplot2::ggplot(med_df, ggplot2::aes(x = play, y = median, color = strategy)) +
+    ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "grey40") +
+    ggplot2::geom_line(linewidth = 1) +
+    ggplot2::scale_color_manual(values = pal, name = "Strategy") +
+    ggplot2::scale_x_continuous(labels = scales::label_comma()) +
+    ggplot2::scale_y_continuous(labels = scales::label_dollar(prefix = "£")) +
+    ggplot2::labs(
+      x = "Play #", y = "Median cumulative P&L",
+      title = .viz_default(title, "Median cumulative P&L over the session -- strategies compared"),
+      subtitle = sprintf("N = %s, R = %s, seed = %s -- median path per strategy on shared random draws",
+                         format(compare_result$N, big.mark = ","),
+                         format(compare_result$R, big.mark = ","),
+                         format(compare_result$seed))
+    ) +
+    ggplot2::theme_minimal(base_size = 13)
+}
+
+
+# ------------------------------------------------------------------------------
+# viz_compare_fan_alt(compare_result)
+# ------------------------------------------------------------------------------
+viz_compare_fan_alt <- function(compare_result) {
+  per <- compare_result$per
+  finals <- vapply(per, function(p) {
+    cq <- p$sim$checkpoint_quantiles
+    j  <- which.min(abs(p$sim$probs - 0.5))
+    cq[nrow(cq), j]
+  }, numeric(1))
+  parts <- sprintf("'%s' ends at a median of £%s",
+                   compare_result$labels,
+                   format(round(finals, 2), big.mark = ","))
+  sprintf(paste0(
+    "Line chart of the median cumulative profit and loss over %s plays for %d ",
+    "strategies on shared random draws: %s. The break-even line is at £0."),
+    format(compare_result$N, big.mark = ","), length(per),
+    paste(parts, collapse = "; ")
+  )
+}
