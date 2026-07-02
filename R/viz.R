@@ -10,11 +10,741 @@
 #     checkpointed quantiles (not every individual play)
 #   - final-P&L histogram/density with break-even/mean/median/percentile
 #     markers
+#   - dream-vs-reality: the advertised jackpot vs what almost always happens
 #   - leaderboard-vs-N small multiple
 #   - single-session play-by-play view
 #   - log/winsorize toggle for heavily skewed distributions
 #   - sortable leaderboard table
 #
-# TODO (Phase 6): implement ggplot2-based chart builders + accessible alt
-# text for each.
+# DESIGN CONTRACT: every viz_*() builder is a PURE function -- it takes result
+# objects from simulate.R/metrics.R (or a caller-assembled tidy data.frame)
+# and returns a ggplot object. No input$/reactive references, no side effects
+# from source()-ing this file, so every chart renders headlessly (tests use
+# ggplot2::ggplot_build()/ggsave() with no device) and app.R only has to wrap
+# each builder in renderPlot(). Each builder has a matching viz_*_alt()
+# function that returns a plain-text alt-text string describing the SAME
+# chart from the underlying numbers (not the possibly-transformed axis), for
+# accessibility (renderPlot(..., alt = ...)).
 # ==============================================================================
+
+
+# ------------------------------------------------------------------------------
+# .viz_default(x, default)
+# ------------------------------------------------------------------------------
+# Internal: tiny "use x unless NULL" helper (no infix operator is defined
+# elsewhere in this codebase, so we keep this as an ordinary function to
+# match house style rather than introducing a `%||%`).
+.viz_default <- function(x, default) if (is.null(x)) default else x
+
+
+# ------------------------------------------------------------------------------
+# .viz_band_colors(n)
+# ------------------------------------------------------------------------------
+# Internal: n shades from light to dark blue for nested fan-chart ribbons
+# (outer band lightest, inner band darkest). WHY not scale_fill_brewer(): the
+# Brewer sequential palettes assume a minimum of 3 levels and emit a warning
+# (and silently substitute) when asked for fewer -- which happens routinely
+# here (a single ribbon band is common), and the orchestrator explicitly
+# checks charts render warning-free. A manual ramp works for any n >= 1.
+.viz_band_colors <- function(n) {
+  if (n <= 1L) return("#8FAEDB")
+  grDevices::colorRampPalette(c("#D6E3F5", "#1B3A5C"))(n)
+}
+
+
+# ==============================================================================
+# 0. LOG / WINSORIZE TRANSFORM FOR SKEWED P&L
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# viz_transform_pnl(x, mode, winsorize_probs, winsorize_bounds)
+# ------------------------------------------------------------------------------
+# Apply a documented transform to a (heavily right-skewed) vector of P&L
+# values so a jackpot tail does not flatten the bulk of a histogram or
+# play-by-play path into a single bar. Three modes:
+#
+#   "none"       identity -- the honest, undistorted axis. Default.
+#   "winsorize"  clip x to [lo, hi], the winsorize_probs quantiles of x (or an
+#                explicit winsorize_bounds = c(lo, hi) supplied by the caller
+#                so markers/other series can be clipped to the SAME bounds as
+#                the main data rather than recomputing quantiles on a tiny
+#                vector of markers). Compresses the tails by DELETING their
+#                true magnitude -- the clipped points all pile up at the
+#                boundary, so "how far into the tail" information is lost.
+#   "signed_log" sign(x) * log1p(abs(x)). Monotonic, continuous, and SIGN-
+#                PRESERVING (f(x) has the same sign as x, f(0) = 0), which
+#                keeps "loss" left-of-zero / "profit" right-of-zero legible.
+#                Compresses the tails smoothly (no information thrown away)
+#                but DISTORTS magnitudes: equal distances on a signed-log axis
+#                do NOT correspond to equal £ differences, and small values
+#                near zero are stretched relative to large ones.
+#
+# TRADE-OFF (documented, per the Phase 6 brief): any transformed axis
+# distorts magnitudes relative to a linear £ scale. "none" is the honest
+# default; "winsorize" and "signed_log" trade a truthful axis for a legible
+# one when a jackpot tail would otherwise flatten the bulk of the
+# distribution into a single bar. Every builder that accepts `transform`
+# labels its axis via viz_transform_axis_label() so the distortion is never
+# silently applied.
+#
+# Returns a plain numeric vector (no attributes -- see the WHY note at the end
+# of the function body) -- deliberately NOT a ggplot2::scales trans object, so
+# builders can transform vlines/markers with
+# the exact same function used on the bulk data (and winsorize markers to the
+# SAME clip bounds as the data they annotate).
+viz_transform_pnl <- function(x,
+                              mode = c("none", "winsorize", "signed_log"),
+                              winsorize_probs  = c(0.01, 0.99),
+                              winsorize_bounds = NULL) {
+  mode <- match.arg(mode)
+  x <- as.numeric(x)
+
+  out <- switch(mode,
+    none = x,
+    winsorize = {
+      bounds <- winsorize_bounds
+      if (is.null(bounds)) {
+        if (length(winsorize_probs) != 2L || any(winsorize_probs < 0) ||
+            any(winsorize_probs > 1) || winsorize_probs[1] >= winsorize_probs[2]) {
+          stop("winsorize_probs must be c(lo, hi) with 0 <= lo < hi <= 1.",
+               call. = FALSE)
+        }
+        bounds <- stats::quantile(x, probs = winsorize_probs, names = FALSE,
+                                  type = 7, na.rm = TRUE)
+      }
+      pmin(pmax(x, bounds[1]), bounds[2])
+    },
+    signed_log = sign(x) * log1p(abs(x))
+  )
+
+  # Deliberately return a bare numeric vector (no "mode" attribute): R's
+  # arithmetic operators propagate arbitrary attributes from their LHS operand,
+  # which would otherwise leak this transform's mode onto anything derived
+  # from `out` by further arithmetic (e.g. viz_untransform_pnl()'s round trip).
+  as.numeric(out)
+}
+
+
+# ------------------------------------------------------------------------------
+# viz_untransform_pnl(x, mode)
+# ------------------------------------------------------------------------------
+# The inverse map for "none" and "signed_log" (both are bijections on the
+# reals). "winsorize" is NOT invertible -- clipped points lose their true
+# value by construction -- so it is returned unchanged with a warning; this
+# is documented rather than silently wrong. Provided mainly so callers/tests
+# can round-trip signed_log and confirm it is a true transform, not a lossy
+# approximation.
+viz_untransform_pnl <- function(x, mode = c("none", "winsorize", "signed_log")) {
+  mode <- match.arg(mode)
+  switch(mode,
+    none       = as.numeric(x),
+    signed_log = sign(x) * (expm1(abs(x))),
+    winsorize  = {
+      warning("winsorize is not invertible (clipped tail values are lost); ",
+              "returning input unchanged.", call. = FALSE)
+      as.numeric(x)
+    }
+  )
+}
+
+
+# ------------------------------------------------------------------------------
+# viz_transform_axis_label(mode, winsorize_probs)
+# ------------------------------------------------------------------------------
+# The clear, honest axis label for each transform mode -- always shown so a
+# distorted axis is never presented as if it were linear £.
+viz_transform_axis_label <- function(mode = c("none", "winsorize", "signed_log"),
+                                     winsorize_probs = c(0.01, 0.99)) {
+  mode <- match.arg(mode)
+  switch(mode,
+    none = "Session P&L (£)",
+    winsorize = sprintf(
+      "Session P&L (£, winsorized to %.0f-%.0fth pct -- tails clipped, not to true scale)",
+      100 * winsorize_probs[1], 100 * winsorize_probs[2]),
+    signed_log = "Session P&L (signed log scale -- equal spacing != equal £)"
+  )
+}
+
+
+# ==============================================================================
+# 1. FAN CHART -- cumulative P&L with a checkpoint-quantile ribbon
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# .fan_chart_bands(checkpoint_quantiles, probs)
+# ------------------------------------------------------------------------------
+# Internal: the fiddly bit. Reshape the (n_checkpoints x length(probs)) matrix
+# generically into nested ribbon bands, WITHOUT hard-coding five columns.
+#
+# PAIRING LOGIC: sort probs ascending and pair position i with position
+# (n - i + 1) for i = 1 .. floor(n/2). Because probs are sorted, i = 1 pairs
+# the smallest with the largest probability -- the WIDEST (outermost) band --
+# and i = floor(n/2) pairs the two probabilities closest to the centre -- the
+# NARROWEST (innermost) band. This generalises "p5-p95 outer, p25-p75 inner"
+# to any symmetric-ish set of probs without assuming exactly five columns.
+#
+#   - ODD count (e.g. 5 probs: .05 .25 .5 .75 .95): floor(n/2) = 2 ribbon
+#     bands, plus one leftover CENTRAL probability (index 3 = the median) that
+#     gets its own bare line, not a ribbon.
+#   - EVEN count (e.g. 4 probs: .05 .25 .75 .95): floor(n/2) = 2 ribbon bands,
+#     no leftover index, so NO bare median line is drawn (there is no exact
+#     central quantile to draw one from).
+#
+# Returns list(ribbons = long data.frame(play, ymin, ymax, level, label) or
+# NULL, median = data.frame(play, value) or NULL).
+.fan_chart_bands <- function(checkpoint_quantiles, probs, play) {
+  ord    <- order(probs)
+  probs_s <- probs[ord]
+  cq_s   <- checkpoint_quantiles[, ord, drop = FALSE]
+  n      <- length(probs_s)
+  half   <- n %/% 2L
+
+  ribbons <- NULL
+  if (half >= 1L) {
+    parts <- lapply(seq_len(half), function(i) {
+      lo_j <- i
+      hi_j <- n - i + 1L
+      data.frame(
+        play  = play,
+        ymin  = cq_s[, lo_j],
+        ymax  = cq_s[, hi_j],
+        level = i,   # 1 = outermost (widest) band
+        label = sprintf("%s%%–%s%%",
+                        format(100 * probs_s[lo_j], trim = TRUE),
+                        format(100 * probs_s[hi_j], trim = TRUE))
+      )
+    })
+    ribbons <- do.call(rbind, parts)
+    # Order outer-to-inner so the legend and draw order read outside-in;
+    # factor levels fixed to creation order (NOT alphabetical).
+    lbl_levels    <- unique(ribbons$label)
+    ribbons$label <- factor(ribbons$label, levels = lbl_levels)
+    ribbons$level <- factor(ribbons$level, levels = sort(unique(ribbons$level)))
+  }
+
+  median <- NULL
+  if (n %% 2L == 1L) {
+    mid    <- half + 1L
+    median <- data.frame(play = play, value = cq_s[, mid])
+  }
+
+  list(ribbons = ribbons, median = median)
+}
+
+
+# ------------------------------------------------------------------------------
+# viz_fan_chart(sim, show_mean = TRUE, title = NULL)
+# ------------------------------------------------------------------------------
+# Cumulative P&L over plays with a nested CI ribbon built from
+# sim$checkpoint_quantiles (NOT per-play data -- the engine never retains
+# per-play sequences for the chunked sessions run; see simulate.R). x =
+# sim$checkpoint_plays; nested ribbons from symmetric quantile pairs (see
+# .fan_chart_bands()); the median as its own line (odd prob count only); the
+# checkpoint mean as a visually distinct dashed reference line (mean and
+# median diverge exactly where the story lives -- a skewed jackpot game pulls
+# the mean away from the median); a dashed break-even line at 0.
+viz_fan_chart <- function(sim, show_mean = TRUE, title = NULL) {
+  stopifnot(is.list(sim),
+           !is.null(sim$checkpoint_quantiles), !is.null(sim$checkpoint_plays))
+
+  cq   <- sim$checkpoint_quantiles
+  play <- sim$checkpoint_plays
+  probs <- sim$probs
+  if (is.null(probs)) {
+    # Defensive fallback for hand-built sim-like objects in tests: parse
+    # "p5", "p25", ... column names back into fractions.
+    nm <- colnames(cq)
+    if (is.null(nm)) stop("sim$checkpoint_quantiles needs column names or sim$probs.",
+                          call. = FALSE)
+    probs <- as.numeric(sub("^p", "", nm)) / 100
+  }
+  if (length(probs) != ncol(cq)) {
+    stop("length(sim$probs) must equal ncol(sim$checkpoint_quantiles).", call. = FALSE)
+  }
+
+  bands <- .fan_chart_bands(cq, probs, play)
+
+  p <- ggplot2::ggplot()
+
+  if (!is.null(bands$ribbons)) {
+    n_bands <- length(levels(bands$ribbons$level))
+    p <- p +
+      ggplot2::geom_ribbon(
+        data = bands$ribbons,
+        ggplot2::aes(x = play, ymin = ymin, ymax = ymax,
+                    group = level, fill = label),
+        alpha = 0.55
+      ) +
+      ggplot2::scale_fill_manual(values = .viz_band_colors(n_bands),
+                                 name = "Percentile band")
+  }
+
+  p <- p + ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "grey40")
+
+  if (!is.null(bands$median)) {
+    p <- p + ggplot2::geom_line(
+      data = bands$median, ggplot2::aes(x = play, y = value),
+      color = "#14213D", linewidth = 0.9
+    )
+  }
+
+  if (isTRUE(show_mean)) {
+    mean_df <- data.frame(play = play, value = sim$checkpoint_mean)
+    p <- p + ggplot2::geom_line(
+      data = mean_df, ggplot2::aes(x = play, y = value),
+      color = "firebrick", linetype = "twodash", linewidth = 0.7
+    )
+  }
+
+  p +
+    ggplot2::scale_x_continuous(labels = scales::label_comma()) +
+    ggplot2::scale_y_continuous(labels = scales::label_dollar(prefix = "£")) +
+    ggplot2::labs(
+      x = "Play #", y = "Cumulative session P&L",
+      title = .viz_default(title, "Cumulative P&L over the session (fan chart)"),
+      subtitle = sprintf(
+        "N = %s, R = %s -- solid = median, dashed red = mean%s",
+        format(sim$N, big.mark = ","), format(sim$R, big.mark = ","),
+        if (is.null(bands$median)) " (no median: even # of percentiles)" else ""
+      )
+    ) +
+    ggplot2::theme_minimal(base_size = 13)
+}
+
+
+# ------------------------------------------------------------------------------
+# viz_fan_chart_alt(sim)
+# ------------------------------------------------------------------------------
+viz_fan_chart_alt <- function(sim) {
+  probs <- sim$probs
+  cq    <- sim$checkpoint_quantiles
+  ord   <- order(probs)
+  lo_j  <- ord[1]; hi_j <- ord[length(ord)]
+  final <- nrow(cq)
+
+  sprintf(paste0(
+    "Fan chart of cumulative session profit and loss over %s plays, across %s ",
+    "simulated sessions. The band widens from the first play to the last; by ",
+    "play %s the %s%% of outcomes fall between £%s and £%s, the mean path ends ",
+    "at £%s, and the break-even line is at £0."),
+    format(sim$N, big.mark = ","), format(sim$R, big.mark = ","),
+    format(tail(sim$checkpoint_plays, 1), big.mark = ","),
+    format(100 * (probs[hi_j] - probs[lo_j]), trim = TRUE),
+    format(round(cq[final, lo_j], 2), big.mark = ","),
+    format(round(cq[final, hi_j], 2), big.mark = ","),
+    format(round(tail(sim$checkpoint_mean, 1), 2), big.mark = ",")
+  )
+}
+
+
+# ==============================================================================
+# 2. FINAL-P&L HISTOGRAM
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# viz_pnl_hist(sim, transform, bins, marker_probs, winsorize_probs, title)
+# ------------------------------------------------------------------------------
+# Distribution of sim$totals with vertical markers for break-even (£0), mean,
+# median, and the requested percentiles (default: the outermost pair of
+# sim$probs if present, else marker_probs). Markers are labelled directly on
+# the plot rather than left to a legend, since 4-6 labelled vlines read more
+# clearly inline than cross-referenced against a key.
+#
+# `transform` feeds viz_transform_pnl(): for "winsorize" the SAME clip bounds
+# are applied to both the bulk histogram data and the markers (bounds computed
+# once from sim$totals) so a marker that lies inside the data's natural range
+# is never spuriously clipped by a marker-only quantile estimate.
+viz_pnl_hist <- function(sim,
+                         transform        = c("none", "winsorize", "signed_log"),
+                         bins             = 40,
+                         marker_probs     = NULL,
+                         winsorize_probs  = c(0.01, 0.99),
+                         title            = NULL) {
+  transform <- match.arg(transform)
+  totals <- as.numeric(sim$totals)
+  if (length(totals) == 0L) stop("sim$totals is empty.", call. = FALSE)
+
+  if (is.null(marker_probs)) {
+    marker_probs <- if (!is.null(sim$probs) && length(sim$probs) >= 2L) {
+      range(sim$probs)
+    } else {
+      c(0.05, 0.95)
+    }
+  }
+
+  bounds <- NULL
+  if (identical(transform, "winsorize")) {
+    bounds <- stats::quantile(totals, probs = winsorize_probs, names = FALSE,
+                              type = 7, na.rm = TRUE)
+  }
+
+  x_t <- viz_transform_pnl(totals, mode = transform,
+                           winsorize_probs = winsorize_probs,
+                           winsorize_bounds = bounds)
+
+  mean_raw   <- mean(totals)
+  median_raw <- stats::median(totals)
+  pct_raw    <- stats::quantile(totals, probs = marker_probs, names = FALSE, type = 7)
+  pct_names  <- paste0("p", format(100 * marker_probs, trim = TRUE))
+
+  marker_raw <- c(0, mean_raw, median_raw, pct_raw)
+  marker_lbl <- c("Break-even", "Mean", "Median", pct_names)
+  marker_t   <- viz_transform_pnl(marker_raw, mode = transform,
+                                  winsorize_probs = winsorize_probs,
+                                  winsorize_bounds = bounds)
+
+  marker_df <- data.frame(
+    label = factor(marker_lbl, levels = marker_lbl),
+    x_raw = marker_raw,
+    x_t   = as.numeric(marker_t),
+    kind  = c("breakeven", "mean", "median", rep("percentile", length(pct_raw)))
+  )
+  # De-duplicate exactly-coincident marker positions (e.g. mean == median on a
+  # symmetric fixture) so overlapping vlines don't stack illegibly.
+  marker_df <- marker_df[!duplicated(round(marker_df$x_t, 8)), , drop = FALSE]
+
+  # TEXT labels get a coarser tolerance-based merge on top of that: when a
+  # rare, huge jackpot pulls the mean far from a tight median/percentile
+  # cluster (the app's central skew story), several markers can land within a
+  # few pixels of each other and their text would otherwise overlap into
+  # mush. Markers within 1.5% of the visible x-range are combined into one
+  # "A / B / C" label positioned at their average x -- the vlines themselves
+  # stay at their exact individual positions.
+  rng <- diff(range(x_t))
+  tol <- if (is.finite(rng) && rng > 0) 0.015 * rng else 0
+  lbl_ord <- marker_df[order(marker_df$x_t), , drop = FALSE]
+  grp_id  <- cumsum(c(TRUE, diff(lbl_ord$x_t) > tol))
+  label_df <- do.call(rbind, lapply(split(lbl_ord, grp_id), function(g) {
+    data.frame(
+      label = paste(as.character(g$label), collapse = " / "),
+      x_t   = mean(g$x_t),
+      kind  = if (nrow(g) == 1L) as.character(g$kind[1]) else "percentile",
+      stringsAsFactors = FALSE
+    )
+  }))
+
+  marker_colors <- c(breakeven = "grey30", mean = "firebrick",
+                     median = "#1B9E77", percentile = "#2C3E50")
+
+  ggplot2::ggplot(data.frame(x = x_t), ggplot2::aes(x = x)) +
+    ggplot2::geom_histogram(bins = bins, fill = "#8FAEDB", color = "white", alpha = 0.9) +
+    ggplot2::geom_vline(
+      data = marker_df,
+      ggplot2::aes(xintercept = x_t, color = kind,
+                  linetype = ifelse(kind == "breakeven", "dashed", "solid")),
+      linewidth = 0.7, show.legend = FALSE
+    ) +
+    ggplot2::geom_text(
+      data = label_df,
+      ggplot2::aes(x = x_t, y = Inf, label = label, color = kind),
+      angle = 90, hjust = 1.1, vjust = -0.3, size = 3.2, show.legend = FALSE
+    ) +
+    ggplot2::scale_color_manual(values = marker_colors) +
+    ggplot2::scale_linetype_identity() +
+    ggplot2::labs(
+      x = viz_transform_axis_label(transform, winsorize_probs), y = "Sessions",
+      title = .viz_default(title, sprintf(
+        "Final session P&L -- N = %s, R = %s",
+        format(sim$N, big.mark = ","), format(sim$R, big.mark = ",")))
+    ) +
+    ggplot2::theme_minimal(base_size = 13) +
+    ggplot2::coord_cartesian(clip = "off")
+}
+
+
+# ------------------------------------------------------------------------------
+# viz_pnl_hist_alt(sim)
+# ------------------------------------------------------------------------------
+# Alt text always describes the RAW (untransformed) numbers -- a screen-reader
+# user should get the honest £ figures regardless of which display transform
+# is toggled on for the visible axis.
+viz_pnl_hist_alt <- function(sim) {
+  totals <- as.numeric(sim$totals)
+  sprintf(paste0(
+    "Histogram of final session profit and loss across %s simulated sessions ",
+    "of %s plays each. Mean £%s, median £%s, break-even (£0) marked; %.1f%% of ",
+    "sessions ended in profit."),
+    format(sim$R, big.mark = ","), format(sim$N, big.mark = ","),
+    format(round(mean(totals), 2), big.mark = ","),
+    format(round(stats::median(totals), 2), big.mark = ","),
+    100 * mean(totals > 0)
+  )
+}
+
+
+# ==============================================================================
+# 3. DREAM VS REALITY
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# viz_dream_vs_reality(metrics, title = NULL)
+# ------------------------------------------------------------------------------
+# Contrasts metrics$dream$full$mean_session (the advertised full distribution,
+# jackpot included) against metrics$dream$conditional$mean_session (what a
+# session looks like when it does NOT hit the top prize tier -- i.e. almost
+# always). Two bars, both labelled with their £ value; a caption states the
+# per-play and per-N-plays jackpot probability HONESTLY (no overselling the
+# upside -- the "reality" bar is deliberately the more prominent number, since
+# it is the outcome almost every session actually experiences).
+viz_dream_vs_reality <- function(metrics, title = NULL) {
+  d <- metrics$dream
+  if (is.null(d) || is.null(d$full) || is.null(d$conditional)) {
+    stop("metrics$dream must be a dream_vs_reality() result.", call. = FALSE)
+  }
+
+  scenario_levels <- c("Advertised\n(full distribution)", "Reality\n(no jackpot hit)")
+  df <- data.frame(
+    scenario     = factor(scenario_levels, levels = scenario_levels),
+    mean_session = c(d$full$mean_session, d$conditional$mean_session)
+  )
+  # Degenerate edge case: the top tier IS essentially the whole distribution,
+  # so dream_vs_reality() reports the conditional mean as NA (see metrics.R).
+  # Drop that row rather than handing geom_col() an NA bar (which only draws a
+  # console warning and an empty bar) -- the caption below explains why.
+  df <- df[!is.na(df$mean_session), , drop = FALSE]
+
+  cap <- if (is.na(d$conditional$mean_session)) {
+    sprintf(paste0(
+      "The top prize (£%s) makes up essentially all of the probability mass ",
+      "here -- there is no meaningful 'no jackpot' scenario to show."),
+      format(d$top_value, big.mark = ",", scientific = FALSE))
+  } else {
+    sprintf(paste0(
+      "Top prize £%s hits with probability %s%% per play (~%s%% chance of at ",
+      "least one hit across N = %s plays). The 'Reality' bar is what a session ",
+      "looks like on every play that does NOT hit it -- almost every session."),
+      format(d$top_value, big.mark = ",", scientific = FALSE),
+      format(signif(100 * d$p_top, 3), trim = TRUE),
+      format(signif(100 * d$p_top_in_N, 3), trim = TRUE),
+      format(d$N, big.mark = ","))
+  }
+
+  ggplot2::ggplot(df, ggplot2::aes(x = scenario, y = mean_session, fill = scenario)) +
+    ggplot2::geom_col(width = 0.55) +
+    ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "grey40") +
+    ggplot2::geom_text(
+      ggplot2::aes(label = scales::label_dollar(prefix = "£")(mean_session),
+                  vjust = ifelse(mean_session >= 0, -0.4, 1.3)),
+      fontface = "bold", size = 4.2
+    ) +
+    ggplot2::scale_fill_manual(values = c("#7B8FA6", "#B0413E"), guide = "none") +
+    ggplot2::scale_y_continuous(labels = scales::label_dollar(prefix = "£")) +
+    ggplot2::labs(
+      x = NULL, y = sprintf("Mean session P&L (N = %s plays)", format(d$N, big.mark = ",")),
+      title = .viz_default(title, "The advertised dream vs. what almost always happens"),
+      caption = cap
+    ) +
+    ggplot2::theme_minimal(base_size = 13) +
+    ggplot2::theme(plot.caption = ggplot2::element_text(hjust = 0, size = 9))
+}
+
+
+# ------------------------------------------------------------------------------
+# viz_dream_vs_reality_alt(metrics)
+# ------------------------------------------------------------------------------
+viz_dream_vs_reality_alt <- function(metrics) {
+  d <- metrics$dream
+  sprintf(paste0(
+    "Bar chart contrasting mean session profit and loss across the full ",
+    "distribution (£%s, includes the jackpot chance) against the distribution ",
+    "conditional on not hitting the top prize of £%s (£%s) -- the outcome in ",
+    "practically every session, since the top prize hits with probability ",
+    "%s%% across %s plays."),
+    format(round(d$full$mean_session, 2), big.mark = ","),
+    format(d$top_value, big.mark = ",", scientific = FALSE),
+    if (is.na(d$conditional$mean_session)) "n/a" else format(round(d$conditional$mean_session, 2), big.mark = ","),
+    format(signif(100 * d$p_top_in_N, 3), trim = TRUE),
+    format(d$N, big.mark = ",")
+  )
+}
+
+
+# ==============================================================================
+# 4. LEADERBOARD-VS-N SMALL MULTIPLE
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# viz_leaderboard_vs_n(series_df, group_col, x_col, y_col, title)
+# ------------------------------------------------------------------------------
+# `series_df` is a tidy data.frame the CALLER assembles across several
+# strategies, e.g.:
+#
+#   do.call(rbind, lapply(strategies, function(s) {
+#     d <- leaderboard_series(strategy_distribution(s, outcomes), N_grid,
+#                             metric = "p_profit", R = 2000, seed = 42)
+#     cbind(strategy = s$label, d)
+#   }))
+#
+# i.e. columns identifying strategy + N + value (metrics.R's leaderboard_series()
+# already returns N/metric/value; this just draws it). One line per strategy,
+# so the crossover in ranking as N grows -- the app's central "loses most" vs
+# "loses least" story -- is visible directly.
+viz_leaderboard_vs_n <- function(series_df,
+                                 group_col = "strategy",
+                                 x_col     = "N",
+                                 y_col     = "value",
+                                 title     = NULL) {
+  need <- c(group_col, x_col, y_col)
+  if (!all(need %in% names(series_df))) {
+    stop(sprintf("series_df must have columns: %s.", paste(need, collapse = ", ")),
+         call. = FALSE)
+  }
+
+  metric_label <- if ("metric" %in% names(series_df)) unique(series_df$metric) else NA
+  single_metric <- length(metric_label) == 1L && !is.na(metric_label)
+
+  ylab <- if (single_metric) {
+    switch(metric_label,
+      p_profit = "P(profit)",
+      mean_pnl = "Mean session P&L (£)",
+      as.character(metric_label))
+  } else "Value"
+
+  p <- ggplot2::ggplot(
+    series_df,
+    ggplot2::aes(x = .data[[x_col]], y = .data[[y_col]], color = .data[[group_col]])
+  ) +
+    ggplot2::geom_line(linewidth = 0.9) +
+    ggplot2::geom_point(size = 1.6) +
+    ggplot2::labs(
+      x = "N (plays per session)", y = ylab, color = "Strategy",
+      title = .viz_default(title, "How the leaderboard shifts as N grows")
+    ) +
+    ggplot2::theme_minimal(base_size = 13)
+
+  if (single_metric && identical(metric_label, "p_profit")) {
+    p <- p + ggplot2::scale_y_continuous(labels = scales::label_percent())
+  } else if (single_metric && identical(metric_label, "mean_pnl")) {
+    p <- p +
+      ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "grey40") +
+      ggplot2::scale_y_continuous(labels = scales::label_dollar(prefix = "£"))
+  }
+
+  p
+}
+
+
+# ------------------------------------------------------------------------------
+# viz_leaderboard_vs_n_alt(series_df, group_col, x_col, y_col)
+# ------------------------------------------------------------------------------
+viz_leaderboard_vs_n_alt <- function(series_df,
+                                     group_col = "strategy",
+                                     x_col     = "N",
+                                     y_col     = "value") {
+  n_min <- min(series_df[[x_col]]); n_max <- max(series_df[[x_col]])
+  at_min <- series_df[series_df[[x_col]] == n_min, , drop = FALSE]
+  at_max <- series_df[series_df[[x_col]] == n_max, , drop = FALSE]
+  best_min <- at_min[[group_col]][which.max(at_min[[y_col]])]
+  best_max <- at_max[[group_col]][which.max(at_max[[y_col]])]
+
+  sprintf(paste0(
+    "Multi-line chart of a metric vs. N (plays per session) across %d strategies. ",
+    "At N = %s the leading strategy is '%s'; at N = %s it is '%s'%s."),
+    length(unique(series_df[[group_col]])),
+    format(n_min, big.mark = ","), best_min,
+    format(n_max, big.mark = ","), best_max,
+    if (identical(best_min, best_max)) " (no change in the leader)" else
+      " (the ranking has flipped)"
+  )
+}
+
+
+# ------------------------------------------------------------------------------
+# viz_leaderboard_table(series_df, group_col, x_col, y_col)
+# ------------------------------------------------------------------------------
+# Tidy data.frame -> wide sortable table (one row per strategy, one column per
+# N) for a UI table (e.g. DT::datatable() in app.R). Kept separate from the
+# chart builder so app.R can render both a plot and a table from the same
+# leaderboard_series() output.
+viz_leaderboard_table <- function(series_df,
+                                  group_col = "strategy",
+                                  x_col     = "N",
+                                  y_col     = "value") {
+  need <- c(group_col, x_col, y_col)
+  if (!all(need %in% names(series_df))) {
+    stop(sprintf("series_df must have columns: %s.", paste(need, collapse = ", ")),
+         call. = FALSE)
+  }
+  tidyr::pivot_wider(
+    series_df[, need],
+    id_cols     = dplyr::all_of(group_col),
+    names_from  = dplyr::all_of(x_col),
+    values_from = dplyr::all_of(y_col),
+    names_prefix = "N="
+  )
+}
+
+
+# ==============================================================================
+# 5. SINGLE-SESSION PLAY-BY-PLAY
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# viz_play_by_play(one_session, price, transform, winsorize_probs, title)
+# ------------------------------------------------------------------------------
+# Cumulative P&L path for ONE session (the length-N per-play net-value vector
+# from simulate_one_session()), with each play marked win/loss.
+#
+# WIN definition: if `price` is supplied, a play wins iff net_value > -price
+# (matching engagement_metrics()'s definition, i.e. any prize at all,
+# including one smaller than the stake). If `price` is NULL (the vector alone
+# carries no stake information), a play is coloured a win iff net_value > 0
+# (strictly ahead on that single play) -- a documented, coarser fallback.
+viz_play_by_play <- function(one_session,
+                             price            = NULL,
+                             transform        = c("none", "winsorize", "signed_log"),
+                             winsorize_probs  = c(0.01, 0.99),
+                             title            = NULL) {
+  transform <- match.arg(transform)
+  values <- as.numeric(one_session)
+  if (length(values) == 0L) stop("one_session is empty.", call. = FALSE)
+  n <- length(values)
+
+  is_win <- if (!is.null(price)) {
+    tol <- 1e-9 * max(1, price)
+    values > -price + tol
+  } else {
+    values > 0
+  }
+
+  cum   <- cumsum(values)
+  cum_t <- viz_transform_pnl(cum, mode = transform, winsorize_probs = winsorize_probs)
+
+  df <- data.frame(
+    play    = seq_len(n),
+    cum_t   = as.numeric(cum_t),
+    outcome = factor(ifelse(is_win, "Win", "Loss"), levels = c("Win", "Loss"))
+  )
+
+  ggplot2::ggplot(df, ggplot2::aes(x = play, y = cum_t)) +
+    ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "grey40") +
+    ggplot2::geom_line(color = "#2C3E50", linewidth = 0.5) +
+    ggplot2::geom_point(ggplot2::aes(color = outcome), size = 1.7, alpha = 0.85) +
+    ggplot2::scale_color_manual(values = c(Win = "#1B9E77", Loss = "#D95F02"),
+                               name = NULL) +
+    ggplot2::labs(
+      x = "Play #", y = viz_transform_axis_label(transform, winsorize_probs),
+      title = .viz_default(title, sprintf("Single-session play-by-play (N = %s)",
+                                          format(n, big.mark = ",")))
+    ) +
+    ggplot2::theme_minimal(base_size = 13)
+}
+
+
+# ------------------------------------------------------------------------------
+# viz_play_by_play_alt(one_session, price = NULL)
+# ------------------------------------------------------------------------------
+viz_play_by_play_alt <- function(one_session, price = NULL) {
+  values <- as.numeric(one_session)
+  n <- length(values)
+  cum <- cumsum(values)
+  is_win <- if (!is.null(price)) values > -price + 1e-9 * max(1, price) else values > 0
+
+  sprintf(paste0(
+    "Line chart of cumulative profit and loss over a single %s-play session. ",
+    "%d of %d plays won; the session ends at £%s, %s break-even."),
+    format(n, big.mark = ","), sum(is_win), n,
+    format(round(tail(cum, 1), 2), big.mark = ","),
+    if (tail(cum, 1) >= 0) "at or above" else "below"
+  )
+}
