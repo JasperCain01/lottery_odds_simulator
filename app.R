@@ -44,7 +44,7 @@ library(scales)
 app_root <- getwd()
 
 for (rel in c("R/data_prep.R", "R/simulate.R", "R/metrics.R",
-              "R/strategies.R", "R/app_helpers.R", "R/viz.R")) {
+              "R/strategies.R", "R/app_helpers.R", "R/viz.R", "R/narrative.R")) {
   source(file.path(app_root, rel))
 }
 
@@ -182,6 +182,12 @@ ui <- page_sidebar(
 
     hr(),
     actionButton("run", "Run simulation", class = "btn-primary w-100")
+  ),
+
+  card(
+    class = "border-primary mb-3",
+    card_header("In plain English", class = "bg-primary text-white"),
+    uiOutput("narrative_panel")
   ),
 
   navset_card_tab(
@@ -377,6 +383,20 @@ server <- function(input, output, session) {
     seed <- res$sim$seed
     seed <- if (is.null(seed)) NULL else as.integer(seed) + 1L
     simulate_one_session(res$dist, N = res$sim$N, seed = seed)
+  })
+
+  # ---- Phase 7 plain-English narrative ---------------------------------------
+  # Prominent card above the tabbed chart/metric panels. Pure narrate_run()
+  # (R/narrative.R) driven straight off the gated pipeline_result(); passing
+  # `sim` upgrades the median/mean/interval sentences to exact empirical
+  # figures off the raw session totals rather than the metrics bundle's
+  # checkpoint grid (see narrate_run()'s header).
+  output$narrative_panel <- renderUI({
+    validate(need(isTRUE(input$run > 0), not_run_msg))
+    res <- pipeline_result()
+    sentences <- narrate_run(res$metrics, strategy = res$strategy,
+                             sim = res$sim, conf = input$conf)
+    tagList(lapply(sentences, function(s) p(s)))
   })
 
   # ---- Phase 6 chart outputs -------------------------------------------------
