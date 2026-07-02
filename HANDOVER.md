@@ -1,0 +1,97 @@
+# HANDOVER — build status & resume protocol
+
+Living status doc for the phased build of the Lottery Odds Simulator (an R
+Shiny dashboard). Maintained by the orchestrating agent so any session can
+resume from the git branch alone, without re-reading prior chat history.
+
+**Branch:** `claude_lottery-simulator-build` (develop here; push here).
+**Plan of record:** `IMPLEMENTATION_PLAN.md` (12 phases). This file tracks
+progress against it.
+
+## Orchestration model
+Each phase is implemented by a dispatched worker (sub-agent), then the
+orchestrator **independently verifies** before committing: runs the full test
+suite, reads the diff, and — for numerical phases — re-derives key results;
+for viz phases — renders charts to PNG and looks at them. Only then commit +
+push. Model per phase follows the plan's table (Opus for engine/stats/CRN/perf;
+Sonnet for UI/plumbing/docs).
+
+## Environment setup (fresh container)
+The container is ephemeral; a reclaimed container has **no R installed**.
+- Install R + core CRAN binaries (fast apt path on Ubuntu 24.04):
+  `sudo apt-get update -qq && sudo apt-get install -y -qq r-base-core r-cran-testthat r-cran-dplyr r-cran-readr r-cran-tidyr r-cran-withr r-cran-ggplot2 r-cran-scales r-cran-shiny r-cran-bslib r-cran-matrixstats r-cran-digest r-cran-cachem`
+  (or `Rscript install.R` for the CRAN set once R is present).
+- **Build the data cache first:** `Rscript -e 'source("R/data_prep.R"); run_data_prep(".")'` → writes `data/{outcomes,game_summary,tiers_raw}.rds` (git-ignored).
+- **Run the suite:** `Rscript -e 'library(testthat); testthat::test_dir("tests/testthat", stop_on_failure=TRUE, reporter="summary")'`
+- **Render charts / run app under UTF-8** so the `£` glyph draws:
+  `export LANG=C.UTF-8 LC_ALL=C.UTF-8` (the default `C` locale shows `£` as `..`).
+
+## Conventions (do not break)
+- `£` in **executable** strings must use the `£` escape (literal `£`
+  misencodes under a non-UTF-8/`C` locale and breaks `grepl`/`expect_equal`);
+  literal `£` is fine in comments. See `R/narrative.R`, `R/compare.R`.
+- Every `R/*.R` layer is `source()`-side-effect-free (functions only).
+- Each phase adds `tests/testthat/test-<layer>.R`; keep the full suite green.
+- Sign convention: P&L negative = loss throughout.
+
+## Phase ledger
+| Phase | Status | Commit | Notes |
+|---|---|---|---|
+| 0 Scaffolding | ✅ | 02dd56f | |
+| 1 Data prep | ✅ | 4432a80 / b96d68e | `outcomes`, `game_summary`, RTP report |
+| 2 Simulation engine | ✅ | cb914a2 | MC + analytical, CRN, chunking |
+| 3 Metrics | ✅ | 77ca02b | VaR/ES, dream-vs-reality, MJ SE, streak |
+| 4 Strategies | ✅ | 0537679 | presets, mix builder, filters, budget→N |
+| 5 Shiny skeleton | ✅ | ee7c6d1 | bslib page_sidebar, reactive graph |
+| 6 Visualisations | ✅ | 1bd012b | fan/hist/dream/leaderboard/play-by-play |
+| 7 Narrative | ✅ | f9a042b | honest plain-English summary |
+| 8 Compare mode | ✅ | c50c0c1 | CRN head-to-head, overlays, export |
+| 9 Performance & caching | ✅ | 72a9281 | faster engine, tuned chunk, result cache |
+| **10 Testing & validation** | 🔄 **in progress** | — | see brief below |
+| 11 Polish/docs/deploy | ⛔ | — | + accumulated polish items below |
+
+## Phase 10 — brief (re-dispatch verbatim if lost)
+Formalise testing (property tests + reconciliation) beyond the per-phase
+fixtures. Model: **Opus · Medium**. Deliverables:
+1. **Reconciliation test** (`tests/testthat/test-reconciliation.R`): using
+   `national_lottery_instant_win_reconciliation.csv` (cols: `slug`,
+   `page_overall_1_in` [published], `implied_overall_1_in` [from scraped odds],
+   `catalogue_overall_1_in`, `diff_pct`). Recompute each game's implied overall
+   odds `1 / P(win)` from the prepared data (P(win) = sum of winning-tier
+   probabilities per game) and assert it matches `implied_overall_1_in` within a
+   small tolerance, and that the implied-vs-published `diff_pct` is within a
+   documented band (flag, don't hard-fail, the few known high-tolerance jackpot
+   games). Validates the whole data-prep → outcomes pipeline against an
+   independent published figure.
+2. **Statistical property tests across ALL real games**
+   (`tests/testthat/test-validation.R`): iterate every game in `outcomes` and
+   assert: probabilities sum to 1; `net_value = prize − price` consistency;
+   simulated `mean(totals)` ≈ analytical `N·netEV` within k·MC-SE (fixed seed,
+   principled k, e.g. 4–5, so non-flaky); empirical percentiles are ordered;
+   CRN reproducibility. Keep runtime reasonable (modest N/R per game, use the
+   cached engine, maybe a representative subset + a few extremes if all-games is
+   slow — document the choice).
+3. **Edge cases**: N=1, R=1, zero-probability tiers, RTP-capped games.
+Verify: `shiny::shinyAppFile("app.R")` constructs; FULL suite green
+(`stop_on_failure=TRUE`). Do NOT commit (orchestrator commits after review).
+Report: what was reconciled + the max diff observed; how many games the
+property sweep covers + the tightest margin; the final `test_dir` line.
+
+## Phase 11 — outline + accumulated polish items (deferred, non-blocking)
+- README usage/deploy docs; alt text already on figures; deployment
+  (shinyapps.io / Posit Connect); optional `renv` + `brand.yml`.
+- **Polish items found during review:** chart title/subtitle/caption truncation
+  at fixed render widths (dream-vs-reality caption, compare subtitle) — wrap with
+  `stringr::str_wrap`; remaining literal-`£` axis labels in `R/viz.R` are
+  cosmetic (fine under any UTF-8 deploy locale) but could be `£` for
+  consistency.
+
+## Resume protocol
+1. Read this file + `git log --oneline`. The last ✅ commit is the last
+   verified phase; anything after is unreviewed.
+2. `git status`: if a phase's files are present uncommitted (worker WIP survived
+   in the container), verify them (suite + read + re-derive) and commit.
+3. If the working tree is clean but the ledger shows a phase 🔄, that phase's
+   worker output was lost — re-dispatch it using the brief above (minimal
+   repeat: only the one phase re-runs).
+4. Continue the ledger.
