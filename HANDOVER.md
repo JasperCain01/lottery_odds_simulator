@@ -47,8 +47,8 @@ The container is ephemeral; a reclaimed container has **no R installed**.
 | 7 Narrative | ✅ | f9a042b | honest plain-English summary |
 | 8 Compare mode | ✅ | c50c0c1 | CRN head-to-head, overlays, export |
 | 9 Performance & caching | ✅ | 72a9281 | faster engine, tuned chunk, result cache |
-| **10 Testing & validation** | 🔄 **in progress** | — | see brief below |
-| 11 Polish/docs/deploy | ⛔ | — | + accumulated polish items below |
+| 10 Testing & validation | ✅ | (this commit) | reconciliation + property sweep (123 games) + edge cases |
+| **11 Polish/docs/deploy** | 🔄 **next** | — | + accumulated polish items below |
 
 ## Phase 10 — brief (re-dispatch verbatim if lost)
 Formalise testing (property tests + reconciliation) beyond the per-phase
@@ -85,6 +85,13 @@ property sweep covers + the tightest margin; the final `test_dir` line.
   `stringr::str_wrap`; remaining literal-`£` axis labels in `R/viz.R` are
   cosmetic (fine under any UTF-8 deploy locale) but could be `£` for
   consistency.
+- **Data-quality note (from Phase 10 reconciliation):** 6 instant-win games
+  (`3-in-a-row, lots-of-luck, lotto-hi-lo, lucky-stars, pennies-and-pounds,
+  prize-ball`) carry prize tiers labelled as small cash but scraped with
+  `gross_prize == 0`, so they fold into the losing row (net_value = −price).
+  `data_prep` is correct (verified); this is an upstream scrape artifact.
+  Consider surfacing it in the README / a data-quality note in the app.
+  Pinned by `tests/testthat/test-reconciliation.R`.
 
 ## Resume protocol
 1. Read this file + `git log --oneline`. The last ✅ commit is the last
