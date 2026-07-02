@@ -510,8 +510,12 @@ server <- function(input, output, session) {
       strat  <- tryCatch(build_strategy(preset, gs, outcomes_full), error = function(e) e)
       if (is_error(strat)) return(NULL)
       dist <- strategy_distribution(strat, outcomes_full)
-      d <- leaderboard_series(dist, N_grid = LEADERBOARD_N_GRID, metric = "p_profit",
-                              R = LEADERBOARD_R, seed = seed_val)
+      # Cached (Phase 9): the p_profit series (one sim per N) is memoised by its
+      # inputs, so recomputing the leaderboard for an unchanged universe/seed is
+      # instant. mean_pnl stays analytical (no simulation) inside the series fn.
+      d <- leaderboard_series_cached(dist, N_grid = LEADERBOARD_N_GRID,
+                                     metric = "p_profit",
+                                     R = LEADERBOARD_R, seed = seed_val)
       cbind(strategy = nm, d)
     })
     parts <- parts[!vapply(parts, is.null, logical(1))]

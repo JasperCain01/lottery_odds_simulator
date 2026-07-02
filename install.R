@@ -24,6 +24,9 @@ required_packages <- c(
   "tidyr",     # tidy reshaping (data_prep)
   "ggplot2",   # visualisations (viz)
   "scales",    # axis/label formatting for currency, percentages (viz)
+  "matrixStats", # fast columnwise reductions in the engine hot path (Phase 9)
+  "cachem",    # bounded LRU cache backend for repeat-run caching (Phase 9)
+  "digest",    # content hashing for correct cache keys (Phase 9)
   "testthat",  # test suite
   "withr"      # scoped state management, used in tests and CRN/seed handling
 )

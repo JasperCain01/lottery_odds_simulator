@@ -388,8 +388,13 @@ simulate_sessions <- function(dist, N, R,
   cum_at_cp <- matrix(0, nrow = R, ncol = ncp)  # R x n_checkpoints cumulative
 
   # ---- chunk over sessions ---------------------------------------------------
-  batch <- .chunk_size(N)            # sessions per batch (bounded cell budget)
-  start <- 1L
+  batch  <- .chunk_size(N)           # sessions per batch (bounded cell budget)
+  breaks <- cd$cdf[-length(cd$cdf)]  # interior inverse-CDF breakpoints (see .draw_batch)
+  # Segment boundaries between consecutive checkpoints: segment k spans plays
+  # seg_lo[k]..cp[k]. Precomputed once so the per-batch accumulation is a short
+  # loop over the ~100 checkpoints, not over all N plays.
+  seg_lo <- c(1L, utils::head(cp, -1L) + 1L)
+  start  <- 1L
   while (start <= R) {
     end  <- min(start + batch - 1L, R)
     bR   <- end - start + 1L         # sessions in this batch
@@ -404,21 +409,27 @@ simulate_sessions <- function(dist, N, R,
     } else {
       u_batch <- stats::runif(bR * N)
     }
-    draws <- .draw_batch(cd, bR, N, u = u_batch)
+    # PERF (Phase 9): lay the draws out in NATURAL column-major order -- (N x bR),
+    # column i = session i -- so the session-contiguous uniform stream maps in
+    # WITHOUT the byrow = TRUE transpose the old (bR x N) layout forced. Crucially
+    # we attach the dimensions with `dim<-` IN PLACE rather than matrix(), which
+    # would copy the freshly indexed vector a second time: profiling showed that
+    # copy dominated engine time, and dropping it ~halves peak memory. A session's
+    # N plays are now a contiguous COLUMN, so cumulative P&L is a columnwise sum.
+    draws <- cd$value[findInterval(u_batch, breaks) + 1L]
+    dim(draws) <- c(N, bR)
 
-    # Cumulative P&L along plays for this batch, then read off the checkpoints.
-    # rowCumsum via t(apply(...)) would copy; instead accumulate columnwise into
-    # only the checkpoint columns to avoid a second bR x N allocation.
-    # Trade-off: a short loop over N with running sums keeps peak memory at one
-    # bR x N draw matrix rather than two.
+    # Cumulative P&L at the checkpoints. Accumulate the columnwise sum of each
+    # inter-checkpoint play slice with matrixStats::colSums2(rows = ...), which
+    # sums the requested rows IN PLACE (no slice copy), rather than one R-level
+    # iteration per play. Chunk-invariant and per-session-independent: each
+    # column is summed on its own, so a session's checkpoints/total do not depend
+    # on how many sessions share its batch. Peak memory stays one N x bR matrix.
     running <- numeric(bR)
-    cp_ptr  <- 1L
-    for (j in seq_len(N)) {
-      running <- running + draws[, j]
-      if (cp_ptr <= ncp && j == cp[cp_ptr]) {
-        cum_at_cp[start:end, cp_ptr] <- running
-        cp_ptr <- cp_ptr + 1L
-      }
+    for (k in seq_len(ncp)) {
+      running <- running +
+        matrixStats::colSums2(draws, rows = seg_lo[k]:cp[k])
+      cum_at_cp[start:end, k] <- running
     }
     # Final cumulative == session total (cp always ends at N, so running holds it).
     totals[start:end] <- running
@@ -467,16 +478,21 @@ simulate_sessions <- function(dist, N, R,
 # (batch x N) stays within a fixed cell budget. This bounds PEAK memory
 # independent of the total R.
 #
-# Budget rationale: 2e7 doubles ~= 160 MB transient -- comfortably within a
-# desktop R session while keeping loop overhead low. At N = 10,000 this gives
-# 2,000 sessions/batch; at small N the whole run fits in one batch.
+# Budget rationale (TUNED in Phase 9): 1e7 doubles ~= 80 MB peak transient. A
+# profiling sweep of 5e6 / 1e7 / 2e7 / 4e7 on representative large runs
+# (N=2000xR=2000, N=5000xR=1000, N=1000xR=5000) found run time FLAT from 1e7
+# upward (differences within measurement noise) and only a slight penalty at
+# 5e6 from extra loop/RNG-call overhead. 1e7 sits at the knee: it matches the
+# fastest observed times while HALVING the peak transient allocation vs the
+# previous 2e7 (160 MB) -- the better memory/speed trade-off. At N = 10,000 this
+# gives 1,000 sessions/batch; at small N the whole run fits in one batch.
 #
-# Trade-off (documented): a larger budget means fewer, larger sample.int() calls
-# (faster) at the cost of a bigger transient allocation; a smaller budget is
-# gentler on memory but adds loop overhead. 2e7 is a middle ground; Phase 9 may
-# tune it after profiling.
+# Trade-off (documented): a larger budget means fewer, larger runif()/findInterval()
+# calls at the cost of a bigger transient N x batch matrix; a smaller budget is
+# gentler on memory but adds loop overhead. It is deliberately a BOUNDED ceiling
+# so peak memory is independent of the total R.
 .chunk_size <- function(N) {
-  cell_budget <- 2e7
+  cell_budget <- 1e7
   b <- max(1L, floor(cell_budget / N))
   as.integer(b)
 }

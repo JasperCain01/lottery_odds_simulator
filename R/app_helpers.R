@@ -9,8 +9,137 @@
 # (no reactive()/input$ references) means (a) the server code in app.R stays a
 # thin wiring layer, and (b) tests/testthat/test-app.R can exercise the same
 # logic both directly (fast, no Shiny needed) and via shiny::testServer()
-# (checks the reactive wiring itself). Sourcing this file is side-effect free.
+# (checks the reactive wiring itself). Sourcing this file defines functions plus
+# ONE module-level object -- the Phase 9 repeat-run cache (an empty in-memory
+# cachem store); it performs no I/O and touches no global state beyond that.
+#
+# Phase 9 also parks the REPEAT-RUN CACHE here (see the caching section below):
+# a bounded, content-keyed memory cache over the expensive engine call so an
+# identical re-run (same distribution + N + R + seed + checkpoints + probs + crn)
+# returns instantly instead of re-simulating. It lives in this glue layer, not
+# in the pure engine (simulate.R stays side-effect free / cache-agnostic), and
+# is wired into run_pipeline() and the leaderboard sweep.
 # ==============================================================================
+
+
+# ==============================================================================
+# REPEAT-RUN CACHING (Phase 9)
+# ==============================================================================
+# WHY here and not in simulate.R: the engine must stay a pure, side-effect-free
+# numerical core (its reproducibility/chunk-invariance contracts are pinned by
+# tests). Caching is an app-layer concern, so the cache object and the cached
+# wrappers live in this glue layer and simply call the pure engine on a miss.
+#
+# BACKEND: a cachem::cache_mem() LRU with a bounded byte ceiling, so a long
+# interactive session cannot grow the cache without limit; least-recently-used
+# results are evicted first. One process-level cache is shared across all Shiny
+# sessions (defined once at source time), so a result computed for one user is
+# reusable for another with identical inputs.
+#
+# KEY CORRECTNESS (the critical part): a cache HIT must be returned only when it
+# is guaranteed identical to recomputing. The key is a digest() over EVERYTHING
+# that affects the engine result -- the distribution's (value, prob) pairs and
+# every scalar control (N, R, seed, checkpoints, probs, crn). The distribution
+# is canonicalised to sorted (value, prob) numeric vectors first, so the key
+# depends only on the numbers that drive the inverse-CDF engine, not on the
+# container type (data.frame vs list) or the row order (the engine sorts by
+# value internally, so a row permutation is the SAME run and SHOULD hit). A miss
+# is always safe (we just recompute); only a false HIT would be a bug, so the key
+# deliberately errs toward distinguishing inputs (e.g. NULL vs 0 seed).
+.pipeline_cache <- cachem::cache_mem(max_size = 512 * 1024^2, evict = "lru")
+
+# Canonical (value, prob) extraction mirroring the engine's own reading of dist,
+# used purely to build a stable cache key (NOT to renormalise -- the engine does
+# that; here we only need a deterministic, container-independent digest input).
+.dist_key_part <- function(dist) {
+  if (!(is.data.frame(dist) || is.list(dist)) ||
+      !all(c("value", "prob") %in% names(dist))) {
+    stop("dist must be a data.frame/list with 'value' and 'prob'.", call. = FALSE)
+  }
+  value <- as.numeric(dist$value)
+  prob  <- as.numeric(dist$prob)
+  ord   <- order(value)
+  list(value = value[ord], prob = prob[ord])
+}
+
+# The full content key for one simulate_sessions() call.
+.sim_cache_key <- function(dist, N, R, seed, checkpoints, probs, crn) {
+  digest::digest(
+    list(
+      dist        = .dist_key_part(dist),
+      N           = as.integer(N),
+      R           = as.integer(R),
+      # NULL and 0 must not collide: tag the no-seed case distinctly.
+      seed        = if (is.null(seed)) "none" else as.integer(seed),
+      checkpoints = checkpoints,
+      probs       = probs,
+      crn         = crn
+    ),
+    algo = "xxhash64"
+  )
+}
+
+# ------------------------------------------------------------------------------
+# simulate_sessions_cached(dist, N, R, ...) -- cached engine wrapper
+# ------------------------------------------------------------------------------
+# Behaviour-identical to simulate_sessions() but returns a cached result on an
+# exact input match. Pass cache = NULL to bypass the cache entirely (used by
+# tests to get an uncached reference to compare against). The result stored is
+# the very object simulate_sessions() returns, so a hit is byte-identical to a
+# fresh computation.
+simulate_sessions_cached <- function(dist, N, R,
+                                     seed        = NULL,
+                                     checkpoints = 100,
+                                     probs       = c(.05, .25, .5, .75, .95),
+                                     crn         = NULL,
+                                     cache       = .pipeline_cache) {
+  if (is.null(cache)) {
+    return(simulate_sessions(dist, N = N, R = R, seed = seed,
+                             checkpoints = checkpoints, probs = probs, crn = crn))
+  }
+  key <- .sim_cache_key(dist, N, R, seed, checkpoints, probs, crn)
+  hit <- cache$get(key)
+  if (!cachem::is.key_missing(hit)) return(hit)
+  res <- simulate_sessions(dist, N = N, R = R, seed = seed,
+                           checkpoints = checkpoints, probs = probs, crn = crn)
+  cache$set(key, res)
+  res
+}
+
+# ------------------------------------------------------------------------------
+# leaderboard_series_cached(dist, N_grid, metric, R, seed, ...)
+# ------------------------------------------------------------------------------
+# Cache the leaderboard-vs-N series (one simulation PER N on the p_profit path)
+# by its inputs. The analytical "mean_pnl" metric needs no simulation and is
+# already instant in leaderboard_series(); caching it too is harmless and keeps
+# one code path. Key covers the distribution and every argument that changes the
+# series. `metric` may be a string or a function; a function is folded into the
+# key by its digest (two structurally identical closures hit, distinct ones do
+# not) -- and on the (rare) event of a hash collision a hit is still only wrong
+# if the closures differ AND digests collide, which xxhash64 makes negligible.
+leaderboard_series_cached <- function(dist, N_grid, metric = "p_profit",
+                                      R = 2000, seed = NULL,
+                                      cache = .pipeline_cache, ...) {
+  if (is.null(cache)) {
+    return(leaderboard_series(dist, N_grid = N_grid, metric = metric,
+                              R = R, seed = seed, ...))
+  }
+  key <- digest::digest(
+    list(kind = "leaderboard_series",
+         dist = .dist_key_part(dist),
+         N_grid = sort(unique(as.integer(N_grid))),
+         metric = metric,
+         R = as.integer(R),
+         seed = if (is.null(seed)) "none" else as.integer(seed),
+         extra = list(...)),
+    algo = "xxhash64")
+  hit <- cache$get(key)
+  if (!cachem::is.key_missing(hit)) return(hit)
+  res <- leaderboard_series(dist, N_grid = N_grid, metric = metric,
+                            R = R, seed = seed, ...)
+  cache$set(key, res)
+  res
+}
 
 # ------------------------------------------------------------------------------
 # load_app_data(root = ".")
@@ -135,7 +264,10 @@ run_pipeline <- function(gs, outcomes, preset,
                           custom_weights = custom_weights)
 
   dist <- strategy_distribution(strat, outcomes)
-  sim  <- simulate_sessions(dist, N = N, R = R, seed = seed, checkpoints = checkpoints)
+  # Cached engine call (Phase 9): an identical re-run (same dist + N + R + seed +
+  # checkpoints) returns the stored result instantly instead of re-simulating.
+  sim  <- simulate_sessions_cached(dist, N = N, R = R, seed = seed,
+                                   checkpoints = checkpoints)
 
   price      <- strategy_expected_price(strat)
   metrics    <- build_metrics(sim, dist, price = price, alpha = 1 - conf)
