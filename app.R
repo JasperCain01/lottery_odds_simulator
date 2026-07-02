@@ -178,14 +178,38 @@ ui <- page_sidebar(
     ),
 
     hr(),
-    h5("Session design"),
-    sliderInput("N", "N — tickets per session",
-                min = N_MIN, max = N_MAX, value = 100, step = 1),
-    sliderInput("R", "R — number of simulated sessions",
+    h5("How many plays?"),
+    helpText(
+      "A \"play\" is one ticket or scratchcard. This is how many you play ",
+      "over time — e.g. one a week for a year is about 52. Over many plays ",
+      "the house edge becomes near-certain; over just a few, luck dominates."),
+    radioButtons(
+      "play_mode", NULL,
+      choices = c("Set the number of plays" = "direct",
+                  "Work it out from a budget over time" = "budget"),
+      selected = "direct"),
+    conditionalPanel(
+      condition = "input.play_mode == 'direct'",
+      sliderInput("N", "Number of plays",
+                  min = N_MIN, max = N_MAX, value = 52, step = 1)),
+    conditionalPanel(
+      condition = "input.play_mode == 'budget'",
+      numericInput("budget_per_period", "Spend per period (£)",
+                   value = 5, min = 0, step = 1),
+      numericInput("periods", "Number of periods (e.g. weeks)",
+                   value = 52, min = 1, step = 1),
+      uiOutput("budget_plays_note")),
+
+    hr(),
+    h5("Simulation accuracy"),
+    sliderInput("R", "Number of simulation runs",
                 min = R_MIN, max = R_MAX, value = 1000, step = 1),
-    helpText(sprintf(
-      "N x R is capped at %s draws per run to keep the app responsive.",
-      format(NR_MAX, big.mark = ",", scientific = FALSE))),
+    helpText(
+      "More runs give a smoother, more precise estimate of the odds — they ",
+      "do NOT change the typical outcome, so you may see little visible change ",
+      "above ~1,000. Plays × runs is capped at ",
+      format(NR_MAX, big.mark = ",", scientific = FALSE),
+      " to keep the app responsive."),
     sliderInput("conf", "Confidence level", min = 0.5, max = 0.99,
                 value = 0.90, step = 0.01),
     numericInput("seed", "Random seed", value = 42, min = 1, step = 1),
@@ -366,6 +390,54 @@ server <- function(input, output, session) {
   outputOptions(output, "custom_weight_inputs", suspendWhenHidden = FALSE)
 
   # ---- Gate the expensive pipeline behind "Run simulation" ------------------
+  # ---- Current strategy (live, ungated) + effective play count --------------
+  # current_strategy() rebuilds the chosen strategy from the LIVE inputs (cheap
+  # -- no simulation) so the budget helper and the effective-play-count calc can
+  # read its expected per-play price. Returns the strategy, or a caught error.
+  current_strategy <- reactive({
+    gs <- filtered_gs()
+    if (is_error(gs)) return(gs)
+    custom_ids <- input$custom_games
+    custom_w   <- if (!is.null(custom_ids) && length(custom_ids) > 0L)
+      collect_custom_weights(input, custom_ids) else NULL
+    tryCatch(
+      build_strategy(input$strategy_preset, gs, outcomes_full,
+                     single_game = input$single_game,
+                     custom_games = custom_ids, custom_weights = custom_w),
+      error = function(e) e)
+  })
+
+  # effective_N(): the number of PLAYS a run should use. "direct" mode -> the
+  # slider; "budget" mode -> derived from spend-per-period x periods via
+  # budget_to_N() using the strategy's EXPECTED per-play price (mixed-price
+  # strategies cost a variable amount per play). NULL if it cannot be computed.
+  effective_N <- reactive({
+    if (!identical(input$play_mode, "budget")) return(input$N)
+    strat <- current_strategy()
+    if (is_error(strat)) return(NULL)
+    bt <- tryCatch(budget_to_N(strat, input$budget_per_period, input$periods),
+                   error = function(e) e)
+    if (is_error(bt)) return(NULL)
+    max(1L, bt$N)
+  })
+
+  # Live note under the budget inputs: how many plays that budget buys.
+  output$budget_plays_note <- renderUI({
+    strat <- current_strategy()
+    if (is_error(strat))
+      return(helpText("Pick a valid strategy and filters to size the budget."))
+    bt <- tryCatch(budget_to_N(strat, input$budget_per_period, input$periods),
+                   error = function(e) e)
+    if (is_error(bt)) return(helpText(conditionMessage(bt)))
+    div(class = "text-muted small",
+        sprintf("≈ %s plays (about %s per play, %s total).",
+                format(max(1L, bt$N), big.mark = ","),
+                paste0("£", formatC(strategy_expected_price(strat),
+                                          format = "f", digits = 2)),
+                paste0("£", formatC(round(bt$total_budget),
+                                          format = "d", big.mark = ","))))
+  })
+
   # WHY plain input$run (not a reactiveVal side-effect set inside the
   # eventReactive): a write to a reactiveVal made inside an eventReactive body
   # is not reliably observable afterwards on a path where that same body later
@@ -375,7 +447,10 @@ server <- function(input, output, session) {
     gs <- filtered_gs()
     validate(need(!is_error(gs), if (is_error(gs)) conditionMessage(gs) else NULL))
 
-    bound_msg <- validate_run_bounds(input$N, input$R, N_MAX, R_MAX, NR_MAX)
+    N_eff <- effective_N()
+    validate(need(!is.null(N_eff),
+                  "Couldn't work out the number of plays — check the strategy and budget inputs."))
+    bound_msg <- validate_run_bounds(N_eff, input$R, N_MAX, R_MAX, NR_MAX)
     validate(need(is.null(bound_msg), bound_msg))
 
     seed_val <- if (is.null(input$seed) || !is.finite(input$seed)) NULL else as.integer(input$seed)
@@ -390,7 +465,7 @@ server <- function(input, output, session) {
         single_game    = input$single_game,
         custom_games   = custom_ids,
         custom_weights = custom_w,
-        N = input$N, R = input$R, seed = seed_val, conf = input$conf
+        N = N_eff, R = input$R, seed = seed_val, conf = input$conf
       )
     }
 
@@ -458,6 +533,8 @@ server <- function(input, output, session) {
   output$fan_plot <- renderPlot({
     validate(need(isTRUE(input$run > 0), not_run_msg))
     res <- pipeline_result()
+    validate(need(res$sim$N > 1,
+      "The fan chart traces cumulative profit/loss across plays — set more than 1 play to see the trajectory."))
     viz_fan_chart(res$sim, title = sprintf("Fan chart — %s", res$strategy$label))
   }, alt = function() {
     if (!isTRUE(input$run > 0)) return(not_run_msg)
@@ -487,6 +564,8 @@ server <- function(input, output, session) {
   output$pbp_plot <- renderPlot({
     validate(need(isTRUE(input$run > 0), not_run_msg))
     res <- pipeline_result()
+    validate(need(res$sim$N > 1,
+      "The play-by-play traces a single session play by play — set more than 1 play to see it."))
     viz_play_by_play(one_session(), price = res$metrics$meta$price,
                      transform = input$pnl_transform,
                      title = sprintf("Play-by-play — %s", res$strategy$label))
@@ -547,7 +626,10 @@ server <- function(input, output, session) {
     gs <- filtered_gs()
     validate(need(!is_error(gs), if (is_error(gs)) conditionMessage(gs) else NULL))
 
-    bound_msg <- validate_run_bounds(input$N, input$R, N_MAX, R_MAX, NR_MAX)
+    N_eff <- effective_N()
+    validate(need(!is.null(N_eff),
+                  "Couldn't work out the number of plays — check the strategy and budget inputs."))
+    bound_msg <- validate_run_bounds(N_eff, input$R, N_MAX, R_MAX, NR_MAX)
     validate(need(is.null(bound_msg), bound_msg))
 
     # Build the config-free presets the user ticked.
@@ -572,7 +654,7 @@ server <- function(input, output, session) {
     seed_val <- if (is.null(input$seed) || !is.finite(input$seed)) 1L else as.integer(input$seed)
 
     res <- tryCatch(
-      run_compare(strats, outcomes_full, N = input$N, R = input$R,
+      run_compare(strats, outcomes_full, N = N_eff, R = input$R,
                   seed = seed_val, conf = input$conf),
       error = function(e) e)
     validate(need(!is_error(res), if (is_error(res)) conditionMessage(res) else NULL))
