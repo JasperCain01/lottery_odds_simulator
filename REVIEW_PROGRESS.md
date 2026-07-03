@@ -27,7 +27,7 @@ Use `LANG=C.UTF-8 LC_ALL=C.UTF-8` for anything rendering `£`.
 | R0 Setup: branch + this ledger | ✅ | (first commit on branch) | |
 | R1 Environment: R installed, data cache built, baseline suite run | ✅ | — | Suite 100% green, 0 failures, 13 files. NOTE: two apt PPAs (deadsnakes, ondrej/php) are proxy-blocked in this container — `sudo rm /etc/apt/sources.list.d/*deadsnakes* *ondrej*` before `apt-get update`. Added r-cran-stringr to the install list (data_prep.R needs it; HANDOVER's list relied on it arriving transitively). |
 | R2 Math review: data_prep, simulate, metrics, strategies, compare | ✅ | — | All 8 R/ files + app.R read line-by-line. Independent spot-checks (scratchpad script, not committed): RTP/EV/SD re-derived from raw CSVs match to 1e-10; ES matches hand calc; MJ SE shrinks ~1/sqrt(n); analytical vs simulated mean z=0.51; all 123 games sum-to-1 and losing-row identities hold. NO substantive math errors found. See findings log. |
-| R3 Display review: viz, narrative, app_helpers, app.R (+ render charts to PNG, launch app headless) | ⬜ | | |
+| R3 Display review: viz, narrative, app_helpers, app.R (+ render charts to PNG, launch app headless) | ✅ | — | 11 PNGs rendered & visually inspected (jackpot game N=52 & N=2000, all transforms, compare mode); narrative + all alt texts printed & read; `shiny::shinyAppFile("app.R")` constructs. Findings F1–F8 below. |
 | R4 REVIEW.md written (findings 1,2,4 + WebR feasibility for 3) | ⬜ | | |
 | R5 Fixes applied for confirmed math/display bugs, suite green | ⬜ | | one commit per logical fix |
 | R6 Final: push, summary to user | ⬜ | | |
@@ -44,8 +44,23 @@ Use `LANG=C.UTF-8 LC_ALL=C.UTF-8` for anything rendering `£`.
 - F3 (display, minor): budget note in app.R says "≈ 1 plays" (no
   pluralisation) and forces `max(1L, bt$N)` even when the budget cannot
   afford a single ticket — overstates what £X buys. app.R.
-- F4 (verify in R3): negative amounts in alt texts render "£-99.5"
-  (format(round(x,2)) after a "£" prefix); check and normalise.
+- F4 (display, CONFIRMED): negative amounts in alt texts render "£-165"
+  and even "£ -12.00" (width-padded vector format) — normalise to "-£165"
+  via a shared helper in viz.R.
+- F5 (display): viz_dream_vs_reality caption prints "hits with probability
+  1.73e-05% per play" — raw scientific notation in user-facing text.
+  Use 1-in-W framing / non-scientific formatting. Same in its alt text.
+- F6 (display, misleading): signed-log histogram/density x-axis ticks show
+  transform units (-3, 0, 3, 6) that users will read as £. Back-transform
+  the tick labels to real £ at nice positions.
+- F7 (display): leaderboard/crossover chart uses a linear N axis; with the
+  grid 10..2000 all the low-N crossover action (the chart's entire story)
+  is squashed into the left margin. Use a log10 N axis.
+- F8 (display, inconsistent): on the Compare tab the crossover chart uses
+  ggplot default hue colours and alphabetical strategy order, while the two
+  charts above it use the Okabe-Ito .compare_palette in supplied order —
+  the SAME strategy gets a different colour between adjacent charts. Align
+  palette + factor ordering.
 
 ## Resume protocol
 1. Read this file + `git log --oneline` on this branch.
