@@ -186,6 +186,31 @@ guaranteed-identical environments, revisit `renv::init()` at that point.
 
 ## Deployment
 
+### In the browser via WebAssembly (GitHub Pages) — primary
+
+The app deploys as a fully static [Shinylive](https://github.com/posit-dev/shinylive)
+site: the R interpreter itself (webR, compiled to WebAssembly) runs in the
+visitor's browser, so there is no Shiny server at all.
+
+- `tools/export_webr.R` builds the site into `_site/`: it stages a minimal
+  copy of the app (`app.R`, `R/`, the prebuilt `data/*.rds`, plus a
+  `data/build_info.rds` build-date stamp shown in the app's sidebar) and
+  runs `shinylive::export()`, which bundles the WebAssembly binaries of
+  every R dependency so the site is self-contained.
+- `.github/workflows/deploy-pages.yml` runs on every push to `main`:
+  install deps → build the data cache → run the FULL test suite (gates the
+  deploy) → export → publish to GitHub Pages.
+- First visit downloads the wasm bundle (tens of MB, cached by the browser
+  thereafter); the app then runs entirely client-side, including the Monte
+  Carlo engine.
+- Note: GitHub Pages requires a **public** repository on free GitHub plans.
+- To build locally: `Rscript -e 'install.packages("shinylive")'` then
+  `Rscript -e 'source("R/data_prep.R"); run_data_prep(".")'` and
+  `Rscript tools/export_webr.R`; serve `_site/` with any static file
+  server (e.g. `python3 -m http.server -d _site`).
+
+### On a Shiny server (shinyapps.io / Posit Connect)
+
 The app is a standard single-file (`app.R` + `R/*.R` + `data/`) Shiny app and
 deploys as-is to shinyapps.io or Posit Connect. No credentials are configured
 in this repository -- deploying requires your own shinyapps.io/Posit Connect
