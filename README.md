@@ -114,11 +114,18 @@ Rscript -e 'library(testthat); testthat::test_dir("tests/testthat", stop_on_fail
   build a custom weighted mix of several games. Sidebar filters restrict the
   game universe by purchasability, on-sale status, price range, category, and
   source.
-- **Session design.** Choose N (tickets per session) and R (number of
-  simulated sessions), a confidence level, and a random seed -- the run is
-  fully reproducible for a given seed. N x R is capped to keep the app
-  responsive; the engine chunks internally so it never materialises the full
-  R x N matrix in memory.
+- **How many plays.** A "play" is one ticket/scratchcard; this control is how
+  many you play *over time* (e.g. one a week for a year is about 52) -- the
+  variable behind the whole small-N-vs-large-N story. Set it directly, or let
+  the app work it out from a budget over time (£X per period for N periods,
+  divided by the strategy's expected price per play). Over many plays the house
+  edge becomes near-certain; over few, luck dominates.
+- **Simulation accuracy.** The number of simulation runs controls how precisely
+  the odds are estimated (more runs = smoother, tighter estimates) -- it does
+  *not* change the typical outcome, so above ~1,000 runs the charts change
+  little. A confidence level and a random seed (fully reproducible per seed)
+  round out the controls. Plays x runs is capped to keep the app responsive;
+  the engine chunks internally so it never materialises the full matrix.
 - **Charts.** A cumulative-P&L fan chart with a nested percentile ribbon; a
   final-P&L histogram with break-even/mean/median/percentile markers and an
   optional winsorize/signed-log transform for heavily skewed distributions; a

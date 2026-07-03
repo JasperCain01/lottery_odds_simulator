@@ -53,6 +53,31 @@
 
 
 # ------------------------------------------------------------------------------
+# .viz_story_caption(N)
+# ------------------------------------------------------------------------------
+# One-line, N-aware restatement of the app's core lesson, shown as a chart
+# caption so the "more plays -> losing becomes near-certain" story lands on the
+# chart itself, not just in the docs. Two registers: at large N the house edge
+# dominates and the loss is near-certain and barely varies; at small N variance
+# still has a say, but the odds tilt to a loss and every extra play tilts it
+# further. 500 plays is the rough crossover where the mean starts to dominate
+# the spread for these games (a deliberately soft, documented threshold).
+.viz_story_caption <- function(N) {
+  if (N >= 500) {
+    sprintf(paste0(
+      "Over %s plays the house edge dominates: the loss is near-certain and ",
+      "barely varies. Fewer plays leave more to luck; more plays make losing ",
+      "a sure thing."), format(N, big.mark = ","))
+  } else {
+    sprintf(paste0(
+      "Over just %s plays luck still has a say -- but the odds tilt to a loss, ",
+      "and every extra play tilts it further toward a near-certain loss."),
+      format(N, big.mark = ","))
+  }
+}
+
+
+# ------------------------------------------------------------------------------
 # .viz_band_colors(n)
 # ------------------------------------------------------------------------------
 # Internal: n shades from light to dark blue for nested fan-chart ribbons
@@ -321,9 +346,12 @@ viz_fan_chart <- function(sim, show_mean = TRUE, title = NULL) {
         "N = %s, R = %s -- solid = median, dashed red = mean%s",
         format(sim$N, big.mark = ","), format(sim$R, big.mark = ","),
         if (is.null(bands$median)) " (no median: even # of percentiles)" else ""
-      )
+      ),
+      caption = .viz_wrap(.viz_story_caption(sim$N), 95)
     ) +
-    ggplot2::theme_minimal(base_size = 13)
+    ggplot2::theme_minimal(base_size = 13) +
+    ggplot2::theme(plot.caption = ggplot2::element_text(
+      hjust = 0, size = 9, face = "italic", color = "grey30"))
 }
 
 
@@ -460,9 +488,12 @@ viz_pnl_hist <- function(sim,
       x = viz_transform_axis_label(transform, winsorize_probs), y = "Sessions",
       title = .viz_default(title, sprintf(
         "Final session P&L -- N = %s, R = %s",
-        format(sim$N, big.mark = ","), format(sim$R, big.mark = ",")))
+        format(sim$N, big.mark = ","), format(sim$R, big.mark = ","))),
+      caption = .viz_wrap(.viz_story_caption(sim$N), 95)
     ) +
     ggplot2::theme_minimal(base_size = 13) +
+    ggplot2::theme(plot.caption = ggplot2::element_text(
+      hjust = 0, size = 9, face = "italic", color = "grey30")) +
     ggplot2::coord_cartesian(clip = "off")
 }
 
