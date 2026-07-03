@@ -41,8 +41,8 @@ User approved: do the WebR conversion, then merge this branch into main.
 | W2 tools/export_webr.R export script (staging dir → shinylive::export → _site) | ✅ | commit 3934ab4 |
 | W3 .github/workflows/deploy-pages.yml (tests → data cache → export → Pages) | ✅ | commit 3934ab4; temporarily triggers on this branch |
 | W4 Local verification: suite green, export mechanics (proxy blocks repo.r-wasm.org AND CRAN locally, so the export itself is CI-verified) | ✅ | suite green; app note shown/omitted correctly; YAML valid; export guard fires |
-| W5 CI green on this branch; Pages deploy verified (fetch the site URL) | 🔄 | run 28658355074 in progress. NOTE: repo is PRIVATE — Pages needs a public repo on free plans; if deploy fails on enablement, that is the cause and it is the user's call (make public or upgrade). README section committed locally, push pending CI verdict. |
-| W6 Flip workflow trigger to main-only, merge branch → main, verify main run + live URL | ⬜ | user has pre-approved this merge |
+| W5 CI verification on this branch | ✅ | Saga: run 1 failed at configure-pages (repo was private); user made repo public; run 2 failed the same way (GITHUB_TOKEN may not CREATE a Pages site); pushed a placeholder `gh-pages` branch which auto-enabled Pages (classic branch mode); rerun then passed the ENTIRE build job (deps, data, suite, export 99.4MB, configure-pages, artifact) and failed only the `deploy` job in 2s — the github-pages environment's default protection rule allows deployments from main only. That is resolved by the merge itself. |
+| W6 Flip workflow trigger to main-only, merge branch → main, verify main run + live URL | 🔄 | trigger flipped (7047702); merging now. After main deploy succeeds: delete the placeholder gh-pages branch (source switches to GitHub Actions). |
 
 ## Findings log (append as discovered; ✅ = fixed, 📝 = documented only)
 - F1 (display, minor): `viz_fan_chart_alt()` alt text reads "the 90% of
