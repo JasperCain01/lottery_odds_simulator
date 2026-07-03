@@ -241,7 +241,10 @@ test_that("viz_pnl_hist_alt reports the RAW (untransformed) mean/median regardle
   sim <- simulate_sessions(dist_simple, N = 60, R = 900, seed = 7, checkpoints = 10)
   alt <- viz_pnl_hist_alt(sim)
   expect_type(alt, "character")
-  expect_true(grepl(sprintf("%.2f", mean(sim$totals)), alt, fixed = TRUE))
+  # The raw mean must appear, formatted by the shared signed-£ helper
+  # ("-£12.34", minus BEFORE the £ -- see .viz_gbp()).
+  expect_true(grepl(.viz_gbp(mean(sim$totals)), alt, fixed = TRUE))
+  expect_true(grepl(.viz_gbp(stats::median(sim$totals)), alt, fixed = TRUE))
 })
 
 

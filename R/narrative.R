@@ -330,8 +330,11 @@ jackpot_odds <- function(p) {
   W <- jackpot_odds(dream$p_top)
   if (is.na(W)) return(NULL)
 
+  # top_value is a NET figure (prize minus the ticket cost): a £2,000,000
+  # jackpot on a £5 ticket is £1,999,995 here. Say "net ... after the ticket
+  # cost" or the number reads as a typo against the advertised prize.
   base <- sprintf(
-    "The advertised big win is a 1-in-%s chance per play of the top prize (%s) -- never plan around it.",
+    "The advertised big win is a 1-in-%s chance per play of the top prize (a net %s after the ticket cost) -- never plan around it.",
     format(W, big.mark = ",", scientific = FALSE, trim = TRUE), fmt_gbp(dream$top_value)
   )
 

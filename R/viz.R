@@ -53,6 +53,55 @@
 
 
 # ------------------------------------------------------------------------------
+# .viz_gbp(x, digits)
+# ------------------------------------------------------------------------------
+# Internal: signed currency formatting for user-facing text (captions, alt
+# text). Puts the minus sign BEFORE the "£" ("-£165.00"), never inside it --
+# the naive paste0("£", format(x)) yields "£-165" (and, on vectors, width-
+# padded "£ -12.00"), which reads as a typo. Vectorised; NA -> "£?".
+.viz_gbp <- function(x, digits = 2) {
+  vapply(as.numeric(x), function(v) {
+    if (is.na(v)) return("\u00a3?")
+    paste0(if (v < 0) "-" else "", "\u00a3",
+           formatC(abs(v), format = "f", digits = digits, big.mark = ","))
+  }, character(1))
+}
+
+
+# ------------------------------------------------------------------------------
+# .viz_pct_fg(p, digits)
+# ------------------------------------------------------------------------------
+# Internal: a 0-1 probability as a percentage string that NEVER falls back to
+# scientific notation (sprintf/format render 1.73e-7 as "1.73e-05%" in
+# user-facing captions). formatC(format = "fg") keeps significant digits in
+# fixed notation for arbitrarily small values.
+.viz_pct_fg <- function(p, digits = 3) {
+  paste0(formatC(100 * as.numeric(p), format = "fg", digits = digits), "%")
+}
+
+
+# ------------------------------------------------------------------------------
+# .viz_signed_log_axis(x_raw)
+# ------------------------------------------------------------------------------
+# Internal: axis breaks/labels for the "signed_log" transform. The transformed
+# values are in sign(x)*log1p(|x|) units, which users would otherwise read as
+# £ (a tick at "-3" looks like -£3 but means -£19). Place ticks at 0 and
+# +/- powers of ten (at most ~5 per side, anchored to the data's magnitude)
+# POSITIONED in transform units but LABELLED with the true £ value.
+# Returns list(breaks, labels), or NULL when the data has no spread to label.
+.viz_signed_log_axis <- function(x_raw) {
+  m <- suppressWarnings(max(abs(as.numeric(x_raw)), na.rm = TRUE))
+  if (!is.finite(m) || m <= 0) return(NULL)
+  k_hi <- ceiling(log10(m))
+  k_lo <- max(0, k_hi - 4)
+  pows <- 10^(k_lo:k_hi)
+  raw  <- sort(unique(c(-pows, 0, pows)))
+  list(breaks = sign(raw) * log1p(abs(raw)),
+       labels = .viz_gbp(raw, digits = 0))
+}
+
+
+# ------------------------------------------------------------------------------
 # .viz_story_caption(N)
 # ------------------------------------------------------------------------------
 # One-line, N-aware restatement of the app's core lesson, shown as a chart
@@ -368,14 +417,14 @@ viz_fan_chart_alt <- function(sim) {
   sprintf(paste0(
     "Fan chart of cumulative session profit and loss over %s plays, across %s ",
     "simulated sessions. The band widens from the first play to the last; by ",
-    "play %s the %s%% of outcomes fall between \u00a3%s and \u00a3%s, the mean path ends ",
-    "at \u00a3%s, and the break-even line is at \u00a30."),
+    "play %s the central %s%% of outcomes fall between %s and %s, the mean ",
+    "path ends at %s, and the break-even line is at \u00a30."),
     format(sim$N, big.mark = ","), format(sim$R, big.mark = ","),
     format(tail(sim$checkpoint_plays, 1), big.mark = ","),
     format(100 * (probs[hi_j] - probs[lo_j]), trim = TRUE),
-    format(round(cq[final, lo_j], 2), big.mark = ","),
-    format(round(cq[final, hi_j], 2), big.mark = ","),
-    format(round(tail(sim$checkpoint_mean, 1), 2), big.mark = ",")
+    .viz_gbp(cq[final, lo_j]),
+    .viz_gbp(cq[final, hi_j]),
+    .viz_gbp(tail(sim$checkpoint_mean, 1))
   )
 }
 
@@ -469,6 +518,19 @@ viz_pnl_hist <- function(sim,
   marker_colors <- c(breakeven = "grey30", mean = "firebrick",
                      median = "#1B9E77", percentile = "#2C3E50")
 
+  # Axis ticks: under "signed_log" the axis is in transform units, so place
+  # ticks at powers of ten labelled with the TRUE £ value (see
+  # .viz_signed_log_axis) -- otherwise a tick reading "-3" is misread as -£3.
+  # On the linear/winsorized axes, plain £ labels.
+  x_scale <- if (identical(transform, "signed_log")) {
+    ax <- .viz_signed_log_axis(totals)
+    if (!is.null(ax)) {
+      ggplot2::scale_x_continuous(breaks = ax$breaks, labels = ax$labels)
+    } else NULL
+  } else {
+    ggplot2::scale_x_continuous(labels = scales::label_dollar(prefix = "\u00a3"))
+  }
+
   ggplot2::ggplot(data.frame(x = x_t), ggplot2::aes(x = x)) +
     ggplot2::geom_histogram(bins = bins, fill = "#8FAEDB", color = "white", alpha = 0.9) +
     ggplot2::geom_vline(
@@ -494,7 +556,8 @@ viz_pnl_hist <- function(sim,
     ggplot2::theme_minimal(base_size = 13) +
     ggplot2::theme(plot.caption = ggplot2::element_text(
       hjust = 0, size = 9, face = "italic", color = "grey30")) +
-    ggplot2::coord_cartesian(clip = "off")
+    ggplot2::coord_cartesian(clip = "off") +
+    x_scale
 }
 
 
@@ -508,11 +571,11 @@ viz_pnl_hist_alt <- function(sim) {
   totals <- as.numeric(sim$totals)
   sprintf(paste0(
     "Histogram of final session profit and loss across %s simulated sessions ",
-    "of %s plays each. Mean \u00a3%s, median \u00a3%s, break-even (\u00a30) marked; %.1f%% of ",
+    "of %s plays each. Mean %s, median %s, break-even (\u00a30) marked; %.1f%% of ",
     "sessions ended in profit."),
     format(sim$R, big.mark = ","), format(sim$N, big.mark = ","),
-    format(round(mean(totals), 2), big.mark = ","),
-    format(round(stats::median(totals), 2), big.mark = ","),
+    .viz_gbp(mean(totals)),
+    .viz_gbp(stats::median(totals)),
     100 * mean(totals > 0)
   )
 }
@@ -549,19 +612,30 @@ viz_dream_vs_reality <- function(metrics, title = NULL) {
   # console warning and an empty bar) -- the caption below explains why.
   df <- df[!is.na(df$mean_session), , drop = FALSE]
 
+  # NOTE the framing: top_value is a NET figure (prize minus the ticket cost),
+  # so a \u00a32,000,000 jackpot on a \u00a35 ticket is \u00a31,999,995 here -- say so, or it
+  # reads as a typo against the advertised prize. The per-play chance is given
+  # as 1-in-W (a "1.73e-05%"-style scientific percentage is unreadable).
+  odds_phrase <- if (!is.na(d$p_top) && d$p_top > 0) {
+    sprintf("about 1 in %s plays",
+            format(round(1 / d$p_top), big.mark = ",", scientific = FALSE))
+  } else {
+    "essentially never"
+  }
   cap <- if (is.na(d$conditional$mean_session)) {
     sprintf(paste0(
-      "The top prize (\u00a3%s) makes up essentially all of the probability mass ",
-      "here -- there is no meaningful 'no jackpot' scenario to show."),
-      format(d$top_value, big.mark = ",", scientific = FALSE))
+      "The top prize (a net win of %s after the ticket cost) makes up ",
+      "essentially all of the probability mass here -- there is no meaningful ",
+      "'no jackpot' scenario to show."),
+      .viz_gbp(d$top_value, digits = 0))
   } else {
     sprintf(paste0(
-      "Top prize \u00a3%s hits with probability %s%% per play (~%s%% chance of at ",
-      "least one hit across N = %s plays). The 'Reality' bar is what a session ",
-      "looks like on every play that does NOT hit it -- almost every session."),
-      format(d$top_value, big.mark = ",", scientific = FALSE),
-      format(signif(100 * d$p_top, 3), trim = TRUE),
-      format(signif(100 * d$p_top_in_N, 3), trim = TRUE),
+      "The top prize is a net win of %s (after the ticket cost) and hits %s ",
+      "(~%s chance of at least one hit across N = %s plays). The 'Reality' bar ",
+      "is what a session looks like on every play that does NOT hit it -- ",
+      "almost every session."),
+      .viz_gbp(d$top_value, digits = 0), odds_phrase,
+      .viz_pct_fg(d$p_top_in_N),
       format(d$N, big.mark = ","))
   }
   # Wrapped so the caption fits within a fixed render width instead of
@@ -595,14 +669,14 @@ viz_dream_vs_reality_alt <- function(metrics) {
   d <- metrics$dream
   sprintf(paste0(
     "Bar chart contrasting mean session profit and loss across the full ",
-    "distribution (\u00a3%s, includes the jackpot chance) against the distribution ",
-    "conditional on not hitting the top prize of \u00a3%s (\u00a3%s) -- the outcome in ",
-    "practically every session, since the top prize hits with probability ",
-    "%s%% across %s plays."),
-    format(round(d$full$mean_session, 2), big.mark = ","),
-    format(d$top_value, big.mark = ",", scientific = FALSE),
-    if (is.na(d$conditional$mean_session)) "n/a" else format(round(d$conditional$mean_session, 2), big.mark = ","),
-    format(signif(100 * d$p_top_in_N, 3), trim = TRUE),
+    "distribution (%s, includes the jackpot chance) against the distribution ",
+    "conditional on not hitting the top prize, a net win of %s after the ",
+    "ticket cost (%s) -- the outcome in practically every session, since the ",
+    "top prize hits with probability %s across %s plays."),
+    .viz_gbp(d$full$mean_session),
+    .viz_gbp(d$top_value, digits = 0),
+    if (is.na(d$conditional$mean_session)) "n/a" else .viz_gbp(d$conditional$mean_session),
+    .viz_pct_fg(d$p_top_in_N),
     format(d$N, big.mark = ",")
   )
 }
@@ -649,14 +723,30 @@ viz_leaderboard_vs_n <- function(series_df,
       as.character(metric_label))
   } else "Value"
 
+  # Stable colour + legend order: factor levels in order of FIRST APPEARANCE
+  # (the caller-supplied strategy order) rather than ggplot's alphabetical
+  # default, coloured with the same Okabe-Ito palette as the compare overlays
+  # -- so on the Compare tab a strategy keeps one colour across the
+  # distribution, fan, and crossover charts instead of being re-keyed.
+  if (!is.factor(series_df[[group_col]])) {
+    series_df[[group_col]] <- factor(series_df[[group_col]],
+                                     levels = unique(series_df[[group_col]]))
+  }
+  n_groups <- nlevels(series_df[[group_col]])
+
   p <- ggplot2::ggplot(
     series_df,
     ggplot2::aes(x = .data[[x_col]], y = .data[[y_col]], color = .data[[group_col]])
   ) +
     ggplot2::geom_line(linewidth = 0.9) +
     ggplot2::geom_point(size = 1.6) +
+    ggplot2::scale_color_manual(values = .compare_palette(n_groups)) +
+    # Log-10 N axis: the grid spans 10..2000 and the ranking crossover -- the
+    # chart's whole story -- happens at small N, which a linear axis squashes
+    # into the left margin. N is validated positive upstream, so log is safe.
+    ggplot2::scale_x_log10(labels = scales::label_comma()) +
     ggplot2::labs(
-      x = "N (plays per session)", y = ylab, color = "Strategy",
+      x = "N (plays per session, log scale)", y = ylab, color = "Strategy",
       title = .viz_default(title, "How the leaderboard shifts as N grows")
     ) +
     ggplot2::theme_minimal(base_size = 13)
@@ -765,6 +855,17 @@ viz_play_by_play <- function(one_session,
     outcome = factor(ifelse(is_win, "Win", "Loss"), levels = c("Win", "Loss"))
   )
 
+  # Same axis-tick treatment as viz_pnl_hist, on the y axis here: real-£
+  # labels on the signed-log axis, plain £ labels otherwise.
+  y_scale <- if (identical(transform, "signed_log")) {
+    ax <- .viz_signed_log_axis(cum)
+    if (!is.null(ax)) {
+      ggplot2::scale_y_continuous(breaks = ax$breaks, labels = ax$labels)
+    } else NULL
+  } else {
+    ggplot2::scale_y_continuous(labels = scales::label_dollar(prefix = "\u00a3"))
+  }
+
   ggplot2::ggplot(df, ggplot2::aes(x = play, y = cum_t)) +
     ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "grey40") +
     ggplot2::geom_line(color = "#2C3E50", linewidth = 0.5) +
@@ -776,7 +877,8 @@ viz_play_by_play <- function(one_session,
       title = .viz_default(title, sprintf("Single-session play-by-play (N = %s)",
                                           format(n, big.mark = ",")))
     ) +
-    ggplot2::theme_minimal(base_size = 13)
+    ggplot2::theme_minimal(base_size = 13) +
+    y_scale
 }
 
 
@@ -791,9 +893,9 @@ viz_play_by_play_alt <- function(one_session, price = NULL) {
 
   sprintf(paste0(
     "Line chart of cumulative profit and loss over a single %s-play session. ",
-    "%d of %d plays won; the session ends at \u00a3%s, %s break-even."),
+    "%d of %d plays won; the session ends at %s, %s break-even."),
     format(n, big.mark = ","), sum(is_win), n,
-    format(round(tail(cum, 1), 2), big.mark = ","),
+    .viz_gbp(tail(cum, 1)),
     if (tail(cum, 1) >= 0) "at or above" else "below"
   )
 }
@@ -863,6 +965,17 @@ viz_compare_dist <- function(compare_result,
     format(compare_result$R, big.mark = ","),
     format(compare_result$seed)), width = 80)
 
+  # Same axis-tick treatment as viz_pnl_hist: real-£ labels on the signed-log
+  # axis (transform-unit ticks are misread as £), plain £ labels otherwise.
+  x_scale <- if (identical(transform, "signed_log")) {
+    ax <- .viz_signed_log_axis(df$pnl)
+    if (!is.null(ax)) {
+      ggplot2::scale_x_continuous(breaks = ax$breaks, labels = ax$labels)
+    } else NULL
+  } else {
+    ggplot2::scale_x_continuous(labels = scales::label_dollar(prefix = "\u00a3"))
+  }
+
   ggplot2::ggplot(df, ggplot2::aes(x = x, color = strategy, fill = strategy)) +
     ggplot2::geom_density(alpha = 0.12, linewidth = 0.9) +
     ggplot2::geom_vline(xintercept = be, linetype = "dashed", color = "grey40") +
@@ -873,7 +986,8 @@ viz_compare_dist <- function(compare_result,
       title = .viz_default(title, "Final session P&L -- strategies compared (shared random draws)"),
       subtitle = subtitle
     ) +
-    ggplot2::theme_minimal(base_size = 13)
+    ggplot2::theme_minimal(base_size = 13) +
+    x_scale
 }
 
 
@@ -883,9 +997,9 @@ viz_compare_dist <- function(compare_result,
 # Alt text off the RAW (untransformed) totals -- honest £ figures per strategy.
 viz_compare_dist_alt <- function(compare_result) {
   tb <- compare_result$table
-  parts <- sprintf("'%s' (mean \u00a3%s, %.1f%% in profit)",
+  parts <- sprintf("'%s' (mean %s, %.1f%% in profit)",
                    tb$strategy,
-                   format(round(tb$mean_pnl, 2), big.mark = ","),
+                   .viz_gbp(tb$mean_pnl),
                    100 * tb$p_profit)
   sprintf(paste0(
     "Overlaid density plot of final session profit and loss for %d strategies ",
@@ -952,9 +1066,9 @@ viz_compare_fan_alt <- function(compare_result) {
     j  <- which.min(abs(p$sim$probs - 0.5))
     cq[nrow(cq), j]
   }, numeric(1))
-  parts <- sprintf("'%s' ends at a median of \u00a3%s",
+  parts <- sprintf("'%s' ends at a median of %s",
                    compare_result$labels,
-                   format(round(finals, 2), big.mark = ","))
+                   .viz_gbp(finals))
   sprintf(paste0(
     "Line chart of the median cumulative profit and loss over %s plays for %d ",
     "strategies on shared random draws: %s. The break-even line is at \u00a30."),
