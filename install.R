@@ -22,6 +22,7 @@ required_packages <- c(
   "dplyr",     # data manipulation (data_prep/metrics/strategies)
   "readr",     # fast CSV ingestion (data_prep)
   "tidyr",     # tidy reshaping (data_prep)
+  "stringr",   # title/game-number parsing (data_prep)
   "ggplot2",   # visualisations (viz)
   "scales",    # axis/label formatting for currency, percentages (viz)
   "matrixStats", # fast columnwise reductions in the engine hot path (Phase 9)
