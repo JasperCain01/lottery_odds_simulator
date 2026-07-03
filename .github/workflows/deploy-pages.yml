@@ -2,15 +2,15 @@
 # GitHub Pages. The full test suite gates the export; the data cache is
 # prebuilt so the browser never parses the raw CSVs.
 #
-# NOTE: the fable_ branch trigger is temporary, for pre-merge verification of
-# this workflow; it is removed when the branch merges to main.
+# NOTE: the deploy job can only succeed from main — the github-pages
+# environment's default protection rules reject deployments from other
+# branches (observed on the pre-merge verification runs).
 name: Deploy Shinylive app to GitHub Pages
 
 on:
   push:
     branches:
       - main
-      - fable_shiny-webr-review-7ooa9h
   workflow_dispatch:
 
 permissions:
