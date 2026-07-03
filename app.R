@@ -418,7 +418,11 @@ server <- function(input, output, session) {
     bt <- tryCatch(budget_to_N(strat, input$budget_per_period, input$periods),
                    error = function(e) e)
     if (is_error(bt)) return(NULL)
-    max(1L, bt$N)
+    # A budget too small for even one play must NOT silently become N = 1
+    # (that would simulate a play the user cannot afford); returning NULL
+    # blocks the run and the budget note below explains why.
+    if (bt$N < 1L) return(NULL)
+    bt$N
   })
 
   # Live note under the budget inputs: how many plays that budget buys.
@@ -429,11 +433,19 @@ server <- function(input, output, session) {
     bt <- tryCatch(budget_to_N(strat, input$budget_per_period, input$periods),
                    error = function(e) e)
     if (is_error(bt)) return(helpText(conditionMessage(bt)))
+    price_txt <- paste0("£", formatC(strategy_expected_price(strat),
+                                     format = "f", digits = 2))
+    if (bt$N < 1L) {
+      return(div(class = "text-danger small",
+                 sprintf(paste0("This budget doesn't cover a single play ",
+                                "(about %s per play) — increase the spend ",
+                                "per period or the number of periods."),
+                         price_txt)))
+    }
     div(class = "text-muted small",
-        sprintf("≈ %s plays (about %s per play, %s total).",
-                format(max(1L, bt$N), big.mark = ","),
-                paste0("£", formatC(strategy_expected_price(strat),
-                                          format = "f", digits = 2)),
+        sprintf("≈ %s (about %s per play, %s total).",
+                pluralise(bt$N, "play"),
+                price_txt,
                 paste0("£", formatC(round(bt$total_budget),
                                           format = "d", big.mark = ","))))
   })
