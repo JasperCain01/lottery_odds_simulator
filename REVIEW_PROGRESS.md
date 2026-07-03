@@ -36,13 +36,13 @@ Use `LANG=C.UTF-8 LC_ALL=C.UTF-8` for anything rendering `£`.
 User approved: do the WebR conversion, then merge this branch into main.
 | Stage | Status | Notes |
 |---|---|---|
-| W0 This ledger extension committed | 🔄 | |
-| W1 App tweaks: wasm-aware cache ceiling, data-snapshot note in sidebar | ⬜ | |
-| W2 tools/export_webr.R export script (staging dir → shinylive::export → _site) | ⬜ | |
-| W3 .github/workflows/deploy-pages.yml (tests → data cache → export → Pages) | ⬜ | temporarily triggers on this branch for pre-merge verification |
-| W4 Local verification: suite green, export mechanics (proxy blocks repo.r-wasm.org locally, so full export verified in CI only) | ⬜ | |
-| W5 CI green on this branch; Pages deploy verified (fetch the site URL) | ⬜ | watch via GitHub MCP actions tools |
-| W6 Flip workflow trigger to main-only, merge branch → main, verify main run + live URL | ⬜ | |
+| W0 This ledger extension committed | ✅ | |
+| W1 App tweaks: wasm-aware cache ceiling, data-snapshot note in sidebar | ✅ | commit 3934ab4 |
+| W2 tools/export_webr.R export script (staging dir → shinylive::export → _site) | ✅ | commit 3934ab4 |
+| W3 .github/workflows/deploy-pages.yml (tests → data cache → export → Pages) | ✅ | commit 3934ab4; temporarily triggers on this branch |
+| W4 Local verification: suite green, export mechanics (proxy blocks repo.r-wasm.org AND CRAN locally, so the export itself is CI-verified) | ✅ | suite green; app note shown/omitted correctly; YAML valid; export guard fires |
+| W5 CI green on this branch; Pages deploy verified (fetch the site URL) | 🔄 | run 28658355074 in progress. NOTE: repo is PRIVATE — Pages needs a public repo on free plans; if deploy fails on enablement, that is the cause and it is the user's call (make public or upgrade). README section committed locally, push pending CI verdict. |
+| W6 Flip workflow trigger to main-only, merge branch → main, verify main run + live URL | ⬜ | user has pre-approved this merge |
 
 ## Findings log (append as discovered; ✅ = fixed, 📝 = documented only)
 - F1 (display, minor): `viz_fan_chart_alt()` alt text reads "the 90% of
