@@ -32,6 +32,18 @@ Use `LANG=C.UTF-8 LC_ALL=C.UTF-8` for anything rendering `£`.
 | R5 Fixes applied for confirmed math/display bugs, suite green | ✅ | 1bdd410 (viz/narrative F1,F2,F4-F8), d81ee94 (app budget F3), + install.R stringr fix | Full suite green after each commit; fixed charts re-rendered and inspected. |
 | R6 Final: push, summary to user | ✅ | — | All findings ✅ fixed except data-staleness note (📝 documented, REVIEW.md §4). Review COMPLETE — nothing pending on resume. |
 
+## WebR conversion stage ledger (added 2026-07-03, user-approved follow-on)
+User approved: do the WebR conversion, then merge this branch into main.
+| Stage | Status | Notes |
+|---|---|---|
+| W0 This ledger extension committed | 🔄 | |
+| W1 App tweaks: wasm-aware cache ceiling, data-snapshot note in sidebar | ⬜ | |
+| W2 tools/export_webr.R export script (staging dir → shinylive::export → _site) | ⬜ | |
+| W3 .github/workflows/deploy-pages.yml (tests → data cache → export → Pages) | ⬜ | temporarily triggers on this branch for pre-merge verification |
+| W4 Local verification: suite green, export mechanics (proxy blocks repo.r-wasm.org locally, so full export verified in CI only) | ⬜ | |
+| W5 CI green on this branch; Pages deploy verified (fetch the site URL) | ⬜ | watch via GitHub MCP actions tools |
+| W6 Flip workflow trigger to main-only, merge branch → main, verify main run + live URL | ⬜ | |
+
 ## Findings log (append as discovered; ✅ = fixed, 📝 = documented only)
 - F1 (display, minor): `viz_fan_chart_alt()` alt text reads "the 90% of
   outcomes fall between" — missing word ("the central 90%"). R/viz.R.
