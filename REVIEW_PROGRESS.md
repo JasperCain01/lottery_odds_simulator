@@ -24,16 +24,28 @@ Use `LANG=C.UTF-8 LC_ALL=C.UTF-8` for anything rendering `£`.
 ## Stage ledger
 | Stage | Status | Commit | Notes |
 |---|---|---|---|
-| R0 Setup: branch + this ledger | 🔄 | | |
-| R1 Environment: R installed, data cache built, baseline suite run | ⬜ | | record baseline pass/fail counts here |
-| R2 Math review: data_prep, simulate, metrics, strategies, compare | ⬜ | | findings logged below as found |
+| R0 Setup: branch + this ledger | ✅ | (first commit on branch) | |
+| R1 Environment: R installed, data cache built, baseline suite run | ✅ | — | Suite 100% green, 0 failures, 13 files. NOTE: two apt PPAs (deadsnakes, ondrej/php) are proxy-blocked in this container — `sudo rm /etc/apt/sources.list.d/*deadsnakes* *ondrej*` before `apt-get update`. Added r-cran-stringr to the install list (data_prep.R needs it; HANDOVER's list relied on it arriving transitively). |
+| R2 Math review: data_prep, simulate, metrics, strategies, compare | ✅ | — | All 8 R/ files + app.R read line-by-line. Independent spot-checks (scratchpad script, not committed): RTP/EV/SD re-derived from raw CSVs match to 1e-10; ES matches hand calc; MJ SE shrinks ~1/sqrt(n); analytical vs simulated mean z=0.51; all 123 games sum-to-1 and losing-row identities hold. NO substantive math errors found. See findings log. |
 | R3 Display review: viz, narrative, app_helpers, app.R (+ render charts to PNG, launch app headless) | ⬜ | | |
 | R4 REVIEW.md written (findings 1,2,4 + WebR feasibility for 3) | ⬜ | | |
 | R5 Fixes applied for confirmed math/display bugs, suite green | ⬜ | | one commit per logical fix |
 | R6 Final: push, summary to user | ⬜ | | |
 
 ## Findings log (append as discovered; ✅ = fixed, 📝 = documented only)
-(none yet)
+- F1 (display, minor): `viz_fan_chart_alt()` alt text reads "the 90% of
+  outcomes fall between" — missing word ("the central 90%"). R/viz.R.
+- F2 (display/wording): narrative `.sentence_jackpot()` and
+  `viz_dream_vs_reality()` caption label `dream$top_value` (a NET figure,
+  prize − price) as "the top prize (£X)" — shows e.g. £999,995 for an
+  advertised £1,000,000 jackpot. Not a math error (net convention is
+  deliberate and consistent) but reads as a typo to users. Fix: label as
+  net or add price back for display.
+- F3 (display, minor): budget note in app.R says "≈ 1 plays" (no
+  pluralisation) and forces `max(1L, bt$N)` even when the budget cannot
+  afford a single ticket — overstates what £X buys. app.R.
+- F4 (verify in R3): negative amounts in alt texts render "£-99.5"
+  (format(round(x,2)) after a "£" prefix); check and normalise.
 
 ## Resume protocol
 1. Read this file + `git log --oneline` on this branch.
