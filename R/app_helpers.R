@@ -46,7 +46,15 @@
 # value internally, so a row permutation is the SAME run and SHOULD hit). A miss
 # is always safe (we just recompute); only a false HIT would be a bug, so the key
 # deliberately errs toward distinguishing inputs (e.g. NULL vs 0 seed).
-.pipeline_cache <- cachem::cache_mem(max_size = 512 * 1024^2, evict = "lru")
+# CEILING: 512 MB natively, but 128 MB under webR/WebAssembly (Shinylive
+# build): wasm32 has a hard ~2 GB heap and the whole R session, packages and
+# transient engine buffers share it, so a fat result cache can push a long
+# browser session into an unrecoverable OOM instead of just evicting.
+# R.version$os is "emscripten" under webR.
+.pipeline_cache <- cachem::cache_mem(
+  max_size = if (identical(R.version$os, "emscripten")) 128 * 1024^2 else 512 * 1024^2,
+  evict = "lru"
+)
 
 # Canonical (value, prob) extraction mirroring the engine's own reading of dist,
 # used purely to build a stable cache key (NOT to renormalise -- the engine does

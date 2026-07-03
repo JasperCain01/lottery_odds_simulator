@@ -53,6 +53,17 @@ app_data          <- load_app_data(app_root)   # builds the cache on first run
 outcomes_full     <- app_data$outcomes
 game_summary_full <- app_data$game_summary
 
+# Build metadata, written by tools/export_webr.R for the static (GitHub
+# Pages / webR) build. The scraped catalogue is a snapshot and `on_sale` is
+# evaluated against the BUILD date there, so the deployed app tells users
+# when that snapshot was taken. Absent (NULL) on a normal local run, where
+# the sidebar note is simply omitted.
+data_build_info <- tryCatch(
+  readRDS(file.path(app_root, "data", "build_info.rds")),
+  error = function(e) NULL,
+  warning = function(w) NULL
+)
+
 # Purchasable universe, computed once, to seed the initial game-picker choices
 # (before any sidebar filter has been touched).
 purchasable_default <- tryCatch(
@@ -227,7 +238,14 @@ ui <- page_sidebar(
              "transformed axis distorts magnitudes -- see the axis label."),
 
     hr(),
-    actionButton("run", "Run simulation", class = "btn-primary w-100")
+    actionButton("run", "Run simulation", class = "btn-primary w-100"),
+
+    if (!is.null(data_build_info) && !is.null(data_build_info$built)) {
+      p(class = "text-muted small mt-3 mb-0",
+        sprintf(paste0("Game data is a snapshot built on %s; ",
+                       "\"on sale\" reflects that date."),
+                format(as.Date(data_build_info$built), "%d %b %Y")))
+    }
   ),
 
   card(
