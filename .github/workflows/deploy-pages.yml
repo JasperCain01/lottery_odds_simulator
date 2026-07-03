@@ -2,9 +2,16 @@
 # GitHub Pages. The full test suite gates the export; the data cache is
 # prebuilt so the browser never parses the raw CSVs.
 #
-# NOTE: the deploy job can only succeed from main — the github-pages
-# environment's default protection rules reject deployments from other
-# branches (observed on the pre-merge verification runs).
+# PUBLISHING MODEL: classic branch publishing — the built _site/ is force-
+# pushed to the `gh-pages` branch as a single fresh commit per deploy, and
+# GitHub Pages serves that branch (Settings → Pages → Deploy from a branch,
+# which auto-configured when gh-pages was first pushed). WHY not the
+# actions/deploy-pages artifact route: the repo's Pages site was created in
+# branch mode and artifact deployments against it failed repeatedly in the
+# Pages backend ("Deployment failed, try again later" during syncing_files);
+# branch publishing needs only `contents: write` and no environment gates.
+# The force push keeps gh-pages at exactly one commit, so the ~100 MB of
+# generated wasm bundles never accumulate in git history.
 name: Deploy Shinylive app to GitHub Pages
 
 on:
@@ -14,17 +21,15 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
-# One Pages deployment at a time; don't cancel a deploy already in flight.
+# One deploy at a time; don't cancel one already in flight.
 concurrency:
   group: pages
   cancel-in-progress: false
 
 jobs:
-  build:
+  build-and-publish:
     runs-on: ubuntu-latest
     env:
       LANG: C.UTF-8
@@ -63,23 +68,17 @@ jobs:
       - name: Export Shinylive site
         run: Rscript tools/export_webr.R
 
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
-        with:
-          enablement: true
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Publish _site to the gh-pages branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # .nojekyll: branch-published sites are Jekyll-processed by default,
+          # which mangles paths and wastes build time on a 200-file wasm bundle.
+          touch _site/.nojekyll
+          cd _site
+          git init -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Deploy Shinylive site from ${GITHUB_SHA}"
+          git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages

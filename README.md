@@ -199,7 +199,10 @@ visitor's browser, so there is no Shiny server at all.
   every R dependency so the site is self-contained.
 - `.github/workflows/deploy-pages.yml` runs on every push to `main`:
   install deps → build the data cache → run the FULL test suite (gates the
-  deploy) → export → publish to GitHub Pages.
+  deploy) → export → force-push `_site/` to the `gh-pages` branch, which
+  GitHub Pages serves ("Deploy from a branch" mode). Each deploy is a single
+  fresh commit on `gh-pages`, so the generated wasm bundles never accumulate
+  in git history.
 - First visit downloads the wasm bundle (tens of MB, cached by the browser
   thereafter); the app then runs entirely client-side, including the Monte
   Carlo engine.
