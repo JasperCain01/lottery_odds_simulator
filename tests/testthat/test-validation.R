@@ -5,14 +5,13 @@
 # outcomes table (not just the hand fixtures in test-simulate.R). This is where
 # the engine's correctness is proven against the actual data it will run on.
 #
-# For each of the ~123 games we assert five properties:
-#   1. probabilities sum to 1 (fp tolerance)                    -- data invariant
-#   2. net_value consistency: the losing row is EXACTLY -price, all values finite
-#   3. simulated mean(totals) ~ analytical N * netEV within k * MC-SE   [HEADLINE]
-#   4. empirical cumulative percentiles are monotonically ordered
-#   5. (a couple of games) CRN reproducibility: same seed/crn -> identical totals
+# For each of the ~123 games we assert two properties:
+#   1. simulated mean(totals) ~ analytical N * netEV within k * MC-SE   [HEADLINE]
+#   2. empirical cumulative percentiles are monotonically ordered
+# The well-formedness of each game's distribution is checked in
+# test-data-prep.R, and RNG/CRN reproducibility in test-simulate.R.
 #
-# THE HEADLINE PROPERTY (3): the mean of R iid session totals has standard error
+# THE HEADLINE PROPERTY (1): the mean of R iid session totals has standard error
 #   SE = sd_total / sqrt(R),  sd_total = sqrt(N) * sd_play   (iid plays).
 # We use the EXACT per-play SD the engine reports (sim$sd_play), so SE is the
 # true sampling error, not a noisy estimate of it. A fixed seed makes the whole
@@ -51,30 +50,8 @@ if (!exists("simulate_sessions_cached", mode = "function")) {
 
 
 # ------------------------------------------------------------------------------
-test_that("every game's outcome distribution is well-formed (sums to 1, consistent net_value)", {
-  outcomes <- .val_data$outcomes
-  gs       <- .val_data$gs
-  price    <- setNames(gs$price, gs$game_id)
-  gids     <- unique(outcomes$game_id)
-
-  for (gid in gids) {
-    r <- outcomes[outcomes$game_id == gid, ]
-    # (1) probabilities sum to 1.
-    expect_equal(sum(r$probability), 1, tolerance = 1e-9, info = gid)
-    expect_true(all(r$probability >= 0), info = gid)
-    # (2) net_value finite; the losing row is exactly -price and is the minimum.
-    expect_true(all(is.finite(r$net_value)), info = gid)
-    p <- price[[gid]]
-    expect_true(p > 0, info = gid)
-    expect_equal(min(r$net_value), -p, tolerance = 1e-9, info = gid)
-    # -price must actually be present as an outcome (the implicit loss row).
-    expect_true(any(abs(r$net_value + p) < 1e-9), info = gid)
-  }
-})
-
-
 # ------------------------------------------------------------------------------
-test_that("simulated mean(totals) tracks analytical N*netEV within k*MC-SE across all games", {
+test_that("every real game simulates without bias, with ordered quantiles", {
   outcomes <- .val_data$outcomes
   gids     <- unique(outcomes$game_id)
 
@@ -88,6 +65,15 @@ test_that("simulated mean(totals) tracks analytical N*netEV within k*MC-SE acros
     a       <- analytical_summary(d, N = .SWEEP_N)
     se      <- sqrt(.SWEEP_N) * sim$sd_play / sqrt(.SWEEP_R)
     mean_ok <- mean(sim$totals)
+
+    # The fan-chart quantiles (p5 < p25 < ... < p95) must be ordered at the
+    # final checkpoint and a midpoint, as must the quantiles of the totals.
+    cq  <- sim$checkpoint_quantiles
+    mid <- max(1L, floor(nrow(cq) / 2))
+    expect_false(is.unsorted(cq[nrow(cq), ]), info = paste(gid, "final"))
+    expect_false(is.unsorted(cq[mid, ]), info = paste(gid, "mid"))
+    expect_false(is.unsorted(stats::quantile(sim$totals, c(.05, .25, .5, .75, .95),
+                                             names = FALSE)), info = paste(gid, "totals"))
 
     if (se > 0) {
       z <- abs(mean_ok - a$mean) / se
@@ -107,51 +93,4 @@ test_that("simulated mean(totals) tracks analytical N*netEV within k*MC-SE acros
 
 
 # ------------------------------------------------------------------------------
-test_that("empirical cumulative percentiles are monotonically ordered for every game", {
-  outcomes <- .val_data$outcomes
-  gids     <- unique(outcomes$game_id)
-
-  for (gid in gids) {
-    d   <- game_distribution(gid, outcomes)
-    sim <- simulate_sessions_cached(d, N = .SWEEP_N, R = .SWEEP_R,
-                                    seed = .SWEEP_SEED)
-    # The fan-chart quantiles are p5<p25<p50<p75<p95 -- ordered along `probs`
-    # at every checkpoint. Check the final checkpoint (full session) and a
-    # midpoint; a broken quantile pipeline would unsort these.
-    q_last <- sim$checkpoint_quantiles[nrow(sim$checkpoint_quantiles), ]
-    expect_false(is.unsorted(q_last), info = paste(gid, "final"))
-    mid <- max(1L, floor(nrow(sim$checkpoint_quantiles) / 2))
-    expect_false(is.unsorted(sim$checkpoint_quantiles[mid, ]),
-                 info = paste(gid, "mid"))
-    # Direct empirical percentiles of the session totals are ordered too.
-    qs <- stats::quantile(sim$totals, c(.05, .25, .5, .75, .95), names = FALSE)
-    expect_false(is.unsorted(qs), info = paste(gid, "totals"))
-  }
-})
-
-
 # ------------------------------------------------------------------------------
-test_that("CRN gives byte-identical totals on repeat runs (representative + extreme games)", {
-  outcomes <- .val_data$outcomes
-  gs       <- .val_data$gs
-
-  # A couple of games spanning the spectrum: the biggest-jackpot game (heaviest
-  # skew) and the cheapest game, plus a mid game.
-  big_jack <- {
-    mx <- tapply(outcomes$net_value, outcomes$game_id, max)
-    names(mx)[which.max(mx)]
-  }
-  cheapest <- gs$game_id[which.min(gs$price)]
-  probe <- unique(c(big_jack, cheapest, gs$game_id[1]))
-
-  for (gid in probe) {
-    d  <- game_distribution(gid, outcomes)
-    s1 <- simulate_sessions(d, N = 200, R = 500, crn = 99)
-    s2 <- simulate_sessions(d, N = 200, R = 500, crn = 99)
-    expect_identical(s1$totals, s2$totals, info = gid)
-    # Seeded (non-CRN) path is likewise reproducible.
-    s3 <- simulate_sessions(d, N = 200, R = 500, seed = 7)
-    s4 <- simulate_sessions(d, N = 200, R = 500, seed = 7)
-    expect_identical(s3$totals, s4$totals, info = gid)
-  }
-})

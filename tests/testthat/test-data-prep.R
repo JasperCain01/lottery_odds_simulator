@@ -21,14 +21,22 @@ gs       <- prep$game_summary
 tiers    <- prep$tiers_raw
 
 # ------------------------------------------------------------------------------
-test_that("per-game outcome probabilities sum to exactly 1 (within fp tol)", {
-  sums <- outcomes |>
-    dplyr::group_by(game_id) |>
-    dplyr::summarise(total = sum(probability), .groups = "drop")
-  # Every game must be within floating-point tolerance of 1.
-  expect_true(all(abs(sums$total - 1) < 1e-9))
-  # And there must be no missing probabilities anywhere.
+test_that("every game's outcome distribution is well-formed", {
+  # Swept over every real game: probabilities are present, non-negative and sum
+  # to 1; net values are finite; and the losing outcome (-price) is the minimum
+  # and appears exactly once (any £0-gross tiers fold into it, not beside it).
+  price <- setNames(gs$price, gs$game_id)
   expect_false(any(is.na(outcomes$probability)))
+  for (gid in unique(outcomes$game_id)) {
+    r <- outcomes[outcomes$game_id == gid, ]
+    p <- price[[gid]]
+    expect_equal(sum(r$probability), 1, tolerance = 1e-9, info = gid)
+    expect_true(all(r$probability >= 0), info = gid)
+    expect_true(all(is.finite(r$net_value)), info = gid)
+    expect_true(p > 0, info = gid)
+    expect_equal(min(r$net_value), -p, tolerance = 1e-9, info = gid)
+    expect_equal(sum(abs(r$net_value + p) < 1e-9), 1L, info = gid)
+  }
 })
 
 # ------------------------------------------------------------------------------
@@ -136,18 +144,6 @@ test_that("losing-row probability equals 1 - sum(winning tier probabilities)", {
 })
 
 # ------------------------------------------------------------------------------
-test_that("£0-gross winning tiers fold into the losing row (mass preserved)", {
-  # 3-in-a-row is known to carry £0 'prize' tiers whose net == -price. The
-  # outcomes table must still sum to 1 and must NOT contain a duplicate -price
-  # row (aggregation collapsed it).
-  g <- "instant_win:3-in-a-row"
-  o <- outcomes[outcomes$game_id == g, ]
-  expect_equal(sum(o$probability), 1, tolerance = 1e-9)
-  price <- gs$price[gs$game_id == g]
-  # Exactly one row at net == -price.
-  expect_equal(sum(abs(o$net_value + price) < 1e-12), 1L)
-})
-
 # ------------------------------------------------------------------------------
 test_that("cross-source game_id is unique and prefixed by source", {
   expect_equal(dplyr::n_distinct(gs$game_id), nrow(gs))
