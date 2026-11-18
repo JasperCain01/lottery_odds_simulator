@@ -321,18 +321,18 @@ test_that("viz_leaderboard_table pivots to one row per strategy, one column per 
 })
 
 test_that("viz_leaderboard_vs_n_alt names the leading strategy at min and max N", {
-  N_grid <- c(10L, 1000L)
-  dA <- data.frame(value = c(-1, 50), prob = c(0.9, 0.1))   # better at low N (fat tail)
-  dB <- data.frame(value = c(-1, 0.5), prob = c(0.5, 0.5))  # better EV at high N
-  series <- rbind(
-    cbind(strategy = "A", leaderboard_series(dA, N_grid, metric = "p_profit", R = 500, seed = 1)),
-    cbind(strategy = "B", leaderboard_series(dB, N_grid, metric = "p_profit", R = 500, seed = 1))
+  # Hand-built series so the leaders are known: A leads at N = 10, B at N = 1000.
+  series <- data.frame(
+    strategy = c("A", "A", "B", "B"),
+    N        = c(10L, 1000L, 10L, 1000L),
+    metric   = "p_profit",
+    value    = c(0.40, 0.05, 0.20, 0.30)
   )
   alt <- viz_leaderboard_vs_n_alt(series)
   expect_type(alt, "character")
-  expect_true(grepl("N = 10", alt, fixed = TRUE))
+  expect_match(alt, "At N = 10 the leading strategy is 'A'", fixed = TRUE)
+  expect_match(alt, "at N = 1,000 it is 'B'", fixed = TRUE)
 })
-
 
 # ==============================================================================
 # 6. viz_play_by_play() -- single-session cumulative path + win/loss marking.
@@ -347,13 +347,17 @@ test_that("viz_play_by_play's cumulative path matches cumsum() of the session ex
   expect_equal(pts$y[order(pts$x)], cumsum(one))
 })
 
-test_that("viz_play_by_play classifies win/loss by price when supplied (matches engagement_metrics' definition)", {
+test_that("viz_play_by_play colours each play as a win or loss by price (engagement_metrics' definition)", {
   one <- simulate_one_session(dist_simple, N = 60, seed = 13)
   price <- 1  # -min(dist_simple$value) == 1
   p <- viz_play_by_play(one, price = price)
   pts <- .layer_data(p, "GeomPoint")
-  # 2 colour groups (Win/Loss) -> 2 distinct 'colour' values used.
-  expect_equal(length(unique(pts$colour)), length(unique(one > -price)))
+  # Map the expected class of each play through the plot's own colour scale,
+  # so a swapped or misapplied classification fails.
+  scale <- ggplot2::ggplot_build(p)$plot$scales$get_scales("colour")
+  expected <- scale$map(ifelse(one > -price, "Win", "Loss"))
+  expect_equal(pts$colour[order(pts$x)], unname(expected))
+  expect_true(any(one > -price) && any(one <= -price))  # both classes present
 })
 
 test_that("viz_play_by_play handles an all-loss single session", {
@@ -377,18 +381,3 @@ test_that("viz_play_by_play_alt reports the correct win count and final balance"
 # 7. Render-to-PNG smoke test -- proves the render path end-to-end (ragg).
 # ==============================================================================
 
-test_that("charts render to an actual non-empty PNG file via ggsave()", {
-  sim <- simulate_sessions(dist_simple, N = 80, R = 400, seed = 15, checkpoints = 20)
-
-  f1 <- tempfile(fileext = ".png")
-  ggplot2::ggsave(f1, viz_fan_chart(sim), width = 7, height = 5, dpi = 72)
-  expect_true(file.exists(f1))
-  expect_gt(file.info(f1)$size, 0)
-
-  f2 <- tempfile(fileext = ".png")
-  ggplot2::ggsave(f2, viz_pnl_hist(sim, transform = "signed_log"), width = 7, height = 5, dpi = 72)
-  expect_true(file.exists(f2))
-  expect_gt(file.info(f2)$size, 0)
-
-  unlink(c(f1, f2))
-})

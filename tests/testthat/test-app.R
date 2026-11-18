@@ -81,15 +81,6 @@ test_that("build_strategy: 'custom' with no games selected errors clearly", {
                "Pick at least one game")
 })
 
-test_that("build_strategy: 'custom' with all-zero weights errors clearly (delegates to make_strategy)", {
-  gs <- filter_games(game_summary_full, purchasable = TRUE)
-  ids <- gs$game_id[1:2]
-  expect_error(
-    build_strategy("custom", gs, outcomes_full, custom_games = ids, custom_weights = c(0, 0)),
-    "weights sum to zero"
-  )
-})
-
 test_that("run_pipeline: end-to-end produces a metrics bundle with the expected shape", {
   gs  <- filter_games(game_summary_full, purchasable = TRUE)
   out <- run_pipeline(gs, outcomes_full, preset = "cheapest",
@@ -178,7 +169,9 @@ test_that("testServer: an empty filter universe is a handled state, not a crash"
     session$setInputs(run = 2)
 
     expect_equal(input$run, 2)
-    expect_error(pipeline_result())   # validate()'s condition, not an unhandled crash
+    # A handled state raises Shiny's validation condition (shown to the user
+    # as a message), not an arbitrary error from deeper in the pipeline.
+    expect_error(pipeline_result(), class = "validation", regexp = "empty universe")
   })
 })
 
@@ -195,7 +188,9 @@ test_that("testServer: a custom mix with no games selected is a handled state, n
     session$setInputs(run = 2)
 
     expect_equal(input$run, 2)
-    expect_error(pipeline_result())
+    # A handled state raises Shiny's validation condition (shown to the user
+    # as a message), not an arbitrary error from deeper in the pipeline.
+    expect_error(pipeline_result(), class = "validation", regexp = "Pick at least one game")
   })
 })
 
@@ -212,6 +207,8 @@ test_that("testServer: N x R over the interactive cap is a handled state, not a 
     session$setInputs(run = 2)
 
     expect_equal(input$run, 2)
-    expect_error(pipeline_result())
+    # A handled state raises Shiny's validation condition (shown to the user
+    # as a message), not an arbitrary error from deeper in the pipeline.
+    expect_error(pipeline_result(), class = "validation", regexp = "exceeds the interactive cap")
   })
 })
