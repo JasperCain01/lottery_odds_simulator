@@ -249,3 +249,17 @@ account.
 app's single `bs_theme(version = 5, primary = "#2C3E50")` call in `app.R` is
 simple enough that a separate branding file would add indirection without
 buying anything; revisit if the theme grows more elaborate.
+
+## Licence
+
+The code in this repository (the R scripts, Shiny app, tests and tooling) is
+released under the [MIT licence](LICENSE).
+
+The MIT licence does not extend to the National Lottery material the project
+analyses. The scraped CSV files at the repository root
+(`national_lottery_*.csv`) and the game procedure PDFs in `lottery_pdfs/` were
+obtained from the National Lottery website, operated by Allwyn, and remain
+subject to that site's terms of use. They are included so that the analysis
+can be reproduced, not offered for reuse under the MIT licence; check the
+operator's terms before reusing them. This project is not affiliated with or
+endorsed by Allwyn or The National Lottery.
