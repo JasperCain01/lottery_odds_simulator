@@ -38,28 +38,14 @@
 # on a normal game) still fails loudly, while the known artifact does not mask it.
 # ==============================================================================
 
-# --- locate + load the prepared artifacts (tests run from tests/testthat) -----
-if (!exists(".phase10_root", inherits = TRUE)) {
-  .phase10_root <- local({
-    cands <- c(".", "..", "../..", "../../..")
-    hit <- cands[file.exists(file.path(cands, "data", "outcomes.rds"))][1]
-    if (is.na(hit)) {
-      stop("Could not locate data/outcomes.rds; build it with ",
-           "Rscript -e 'source(\"R/data_prep.R\"); run_data_prep(\".\")'")
-    }
-    hit
-  })
-}
-
+# --- the prepared data (helper-data.R) plus the independent reconciliation CSV
 .recon_data <- local({
-  root <- .phase10_root
-  outcomes <- readRDS(file.path(root, "data", "outcomes.rds"))
-  gs       <- readRDS(file.path(root, "data", "game_summary.rds"))
-  tiers    <- readRDS(file.path(root, "data", "tiers_raw.rds"))
-  recon    <- utils::read.csv(
-    file.path(root, "national_lottery_instant_win_reconciliation.csv"),
+  prep  <- test_data()
+  recon <- utils::read.csv(
+    file.path(test_repo_root(), "national_lottery_instant_win_reconciliation.csv"),
     stringsAsFactors = FALSE)
-  list(outcomes = outcomes, gs = gs, tiers = tiers, recon = recon)
+  list(outcomes = prep$outcomes, gs = prep$game_summary, tiers = prep$tiers_raw,
+       recon = recon)
 })
 
 # Slug = the part of an instant_win game_id after "instant_win:".

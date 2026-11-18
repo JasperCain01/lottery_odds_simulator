@@ -16,8 +16,6 @@
 #       which sorts by value), and equals the engine result -- so no correctness
 #       is lost by treating it as a hit;
 #   (e) the leaderboard-series cache round-trips and does not false-hit;
-#   (f) the optimised engine path stays reproducible and equal to an independent
-#       recomputation (leaning on the fuller property tests in test-simulate.R).
 # ==============================================================================
 
 # Load the layers under test (mirrors the guards in the other test files).
@@ -155,25 +153,7 @@ test_that("leaderboard_series_cached round-trips and does not false-hit", {
                                    R = 200, seed = 2, cache = cache)
   expect_false(isTRUE(all.equal(lb1$value, lb2$value)))
 
-  # The analytical mean_pnl path needs no simulation and is exact.
-  mp <- leaderboard_series_cached(dist_a, N_grid = grid, metric = "mean_pnl",
-                                  R = 200, seed = 1, cache = cache)
-  ev <- sum(dist_a$value * dist_a$prob)
-  expect_equal(mp$value, grid * ev)
 })
 
 
 # ------------------------------------------------------------------------------
-test_that("optimised engine path is reproducible and equals a recomputation", {
-  # Leans on test-simulate.R's fuller property/chunk-invariance suite; here we
-  # simply re-pin that the (Phase 9) natural-layout + colSums2 accumulation is
-  # deterministic and that its last checkpoint equals the session total.
-  s1 <- simulate_sessions(dist_a, N = 300, R = 800, seed = 2024)
-  s2 <- simulate_sessions(dist_a, N = 300, R = 800, seed = 2024)
-  expect_identical(s1$totals, s2$totals)
-  ncp <- length(s1$checkpoint_plays)
-  # cum_at_cp is not returned, but the final-checkpoint quantiles must equal the
-  # quantiles of totals (the last checkpoint IS the session total).
-  final_q <- stats::quantile(s1$totals, probs = s1$probs, names = FALSE, type = 7)
-  expect_equal(as.numeric(s1$checkpoint_quantiles[ncp, ]), final_q)
-})

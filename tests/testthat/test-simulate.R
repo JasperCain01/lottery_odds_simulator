@@ -307,3 +307,17 @@ test_that("game_distribution extracts one game's (value, prob) generically", {
   # Unknown game errors.
   expect_error(game_distribution("nope", outcomes), "not found")
 })
+
+
+# ------------------------------------------------------------------------------
+test_that("a zero-probability outcome is carried but never drawn", {
+  # An impossible jackpot at probability 0: sum(prob) stays 1, so the engine
+  # must not warn about renormalising, must never select it, and the mean must
+  # be unchanged.
+  huge <- 1e6
+  dz <- rbind(dist_simple, data.frame(value = huge, prob = 0))
+  expect_silent(sim <- simulate_sessions(dz, N = 300, R = 1000, seed = 5))
+  expect_false(any(sim$totals >= huge))
+  expect_equal(analytical_summary(dz, N = 300)$mean,
+               analytical_summary(dist_simple, N = 300)$mean, tolerance = 1e-9)
+})

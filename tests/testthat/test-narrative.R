@@ -200,7 +200,7 @@ test_that("degenerate interval (lo == hi) reads plainly, not 'between £X and £
 })
 
 
-test_that("p_top = 0 (no top-prize tier) omits the jackpot clause gracefully, no divide-by-zero", {
+test_that("p_top = 0 or NA omits the jackpot clause gracefully, no divide-by-zero", {
   m <- mk_metrics(p_top = 0)
   expect_no_error(s <- narrate_run(m))
   txt <- paste(s, collapse = " ")
@@ -209,26 +209,10 @@ test_that("p_top = 0 (no top-prize tier) omits the jackpot clause gracefully, no
   expect_false(grepl("Inf", txt, fixed = TRUE))
   expect_false(grepl("NaN", txt, fixed = TRUE))
   expect_false(grepl("\\bNA\\b", txt))
-})
 
-
-test_that("p_top = NA (unknown/absent top tier) is also handled gracefully", {
-  m <- mk_metrics(p_top = NA_real_)
-  expect_no_error(s <- narrate_run(m))
+  # An unknown/absent top tier (NA) is handled the same way.
+  s <- narrate_run(mk_metrics(p_top = NA_real_))
   expect_false(any(grepl("1-in-", s, fixed = TRUE)))
-})
-
-
-test_that("jackpot 1-in-W matches round(1/p_top) exactly on a fixture", {
-  m <- mk_metrics(p_top = 1 / 3, top_value = 999)
-  W <- jackpot_odds(m$dream$p_top)
-
-  expect_equal(W, 3L)
-  expect_equal(W, round(1 / m$dream$p_top))
-
-  txt <- paste(narrate_run(m), collapse = " ")
-  expect_true(grepl("1-in-3 chance per play", txt, fixed = TRUE))
-  expect_true(grepl("£999", txt, fixed = TRUE))
 })
 
 

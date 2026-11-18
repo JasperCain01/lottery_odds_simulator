@@ -89,8 +89,6 @@ test_that("self-comparison under shared CRN gives byte-identical totals", {
 
   # Byte-identical: driven by the same uniforms on the same distribution.
   expect_identical(tA1, tA2)
-  # Paired difference is exactly 0 for EVERY session.
-  expect_true(all(tA1 - tA2 == 0))
 })
 
 
