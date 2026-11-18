@@ -38,21 +38,9 @@ if (!exists("simulate_sessions_cached", mode = "function")) {
   .src("R/app_helpers.R")
 }
 
-if (!exists(".phase10_root", inherits = TRUE)) {
-  .phase10_root <- local({
-    cands <- c(".", "..", "../..", "../../..")
-    hit <- cands[file.exists(file.path(cands, "data", "outcomes.rds"))][1]
-    if (is.na(hit)) stop("Could not locate data/outcomes.rds; build the cache first.")
-    hit
-  })
-}
-
 .val_data <- local({
-  root <- .phase10_root
-  list(
-    outcomes = readRDS(file.path(root, "data", "outcomes.rds")),
-    gs       = readRDS(file.path(root, "data", "game_summary.rds"))
-  )
+  prep <- test_data()
+  list(outcomes = prep$outcomes, gs = prep$game_summary)
 })
 
 # Sweep controls (documented above).

@@ -12,33 +12,10 @@
 # tests reproducible regardless of when they run.
 # ==============================================================================
 
-# Locate repo root from the test working dir. testthat runs with wd at the
-# tests/testthat directory (via test_dir) or at repo root (via test_check-style
-# sourcing); handle both by walking up until we find the raw CSV.
-.find_root <- function() {
-  candidates <- c(".", "..", "../..", "../../..")
-  for (p in candidates) {
-    if (file.exists(file.path(p, "national_lottery_scratchcard_odds.csv"))) {
-      return(normalizePath(p))
-    }
-  }
-  stop("Could not locate repo root (scratchcard_odds.csv not found).")
-}
-
-ROOT   <- .find_root()
-PINNED <- as.Date("2026-07-01")
-
-# Ensure the layer under test is loaded. The project ships a testthat.R harness
-# that sources R/*.R, but running via test_dir() alone does not, so source it
-# here when the entry point is absent. WHY guard: avoid double-sourcing side
-# effects when the harness already loaded it.
-if (!exists("prepare_data", mode = "function")) {
-  suppressWarnings(source(file.path(ROOT, "R", "data_prep.R")))
-}
-
-# Run the pipeline once for the whole file. suppressWarnings because a clean
-# snapshot may still warn on unmatched IW slugs; those are asserted separately.
-prep <- suppressWarnings(prepare_data(root = ROOT, today = PINNED))
+# The pipeline is run once per test run by helper-data.R (test_data()), from
+# the committed raw CSVs with `today` pinned.
+ROOT     <- test_repo_root()
+prep     <- test_data()
 outcomes <- prep$outcomes
 gs       <- prep$game_summary
 tiers    <- prep$tiers_raw
