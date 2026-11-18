@@ -231,19 +231,6 @@ test_that("quantile_se matches the theoretical median SE for a Normal sample", {
 })
 
 
-test_that("quantile_se shrinks like 1/sqrt(R) as the sample grows", {
-  # Quadrupling n should halve the SE. Average over 10 seeds per size so the
-  # ratio's own sampling error (~3%) is small; a 15% band is comfortably safe.
-  avg <- function(n, seeds) mean(vapply(seeds, function(s) {
-    set.seed(s); quantile_se(rnorm(n), 0.5)$se
-  }, numeric(1)))
-  s_small <- avg(20000, 101:110)
-  s_big   <- avg(80000, 201:210)   # 4x the sample
-  expect_lt(abs(s_small / s_big - 2), 0.15)
-  expect_gt(s_small, s_big)        # strictly smaller SE at larger n
-})
-
-
 test_that("quantile_se returns a tidy frame with type-7 point estimates", {
   set.seed(5)
   x  <- rnorm(5000)

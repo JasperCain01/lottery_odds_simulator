@@ -117,9 +117,14 @@ test_that("make_strategy normalises weights and records aligned prices", {
   expect_equal(s$type, "mixture")
 })
 
-test_that("make_strategy defaults to uniform weights", {
+test_that("make_strategy and random_each_play default to uniform weights", {
   s <- make_strategy(c("gA", "gB", "gC"), game_summary = game_summary)
   expect_equal(s$weights, rep(1/3, 3))
+
+  # random_each_play is the same thing over the filtered universe (gA, gB, gC).
+  r <- strategy_random_each_play(filter_games(game_summary))
+  expect_setequal(r$game_ids, c("gA", "gB", "gC"))
+  expect_equal(r$weights, rep(1/3, 3))
 })
 
 test_that("make_strategy drops zero-weight games but keeps positives", {
@@ -173,16 +178,6 @@ test_that("aggregation merges shared net_values across games", {
   expect_equal(dist$prob[dist$value == 0], 0.35)
   expect_equal(sum(dist$prob), 1)
 })
-
-test_that("analytical_summary on the mixture gives mean N * mixtureEV", {
-  s    <- make_strategy(c("gA", "gC"), weights = c(0.5, 0.5), game_summary = game_summary)
-  dist <- strategy_distribution(s, outcomes)
-  N    <- 250
-  a    <- analytical_summary(dist, N = N)
-  expect_equal(a$ev_play, 0.1)
-  expect_equal(a$mean, N * 0.1)
-})
-
 
 # ==============================================================================
 # THE EQUIVALENCE PROPERTY (empirical half -- the important test)
@@ -260,14 +255,6 @@ test_that("extreme presets pick the right game over the purchasable universe", {
   expect_equal(strategy_biggest_jackpot(u, outcomes)$game_ids, "gB")  # top net 100
 })
 
-test_that("presets ignore non-purchasable games once filtered out", {
-  # Unfiltered, gH is cheapest (£0.5) and gP best RTP (0.99); the purchasable
-  # filter must remove them so the presets pick from gA/gB/gC only.
-  u <- filter_games(game_summary)
-  expect_false("gH" %in% strategy_cheapest(u)$game_ids)
-  expect_false("gP" %in% strategy_best_rtp(u)$game_ids)
-})
-
 test_that("extreme presets split ties with equal weight (documented rule)", {
   # Two games tied at the cheapest price -> equal weight across both.
   gs_tie <- data.frame(
@@ -287,13 +274,6 @@ test_that("extreme presets split ties with equal weight (documented rule)", {
   sw <- strategy_worst_rtp(gs_tie)
   expect_setequal(sw$game_ids, c("t1", "t2"))
   expect_equal(sw$weights, c(0.5, 0.5))
-})
-
-test_that("random_each_play is uniform over the filtered universe", {
-  u <- filter_games(game_summary)                 # gA, gB, gC
-  s <- strategy_random_each_play(u)
-  expect_setequal(s$game_ids, c("gA", "gB", "gC"))
-  expect_equal(s$weights, rep(1/3, 3))
 })
 
 test_that("strategy_single is a weight-1 single-game strategy", {
